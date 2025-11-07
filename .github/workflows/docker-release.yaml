@@ -72,26 +72,3 @@ jobs:
           subject-name: ghcr.io/${{ github.repository }}
           subject-digest: ${{ steps.publish-image.outputs.digest }}
           push-to-registry: true
-
-  distribute-to-dockerhub:
-    runs-on: ubuntu-latest
-    needs:
-      - build-and-push-docker-image
-    permissions:
-      packages: read
-    steps:
-      - name: Copy image to dockerhub
-        env:
-          IMAGE_VERSION: ${{ github.ref_name }}
-          GHCR_REPO: "ghcr.io/${{ github.repository }}"
-          GHCR_USERNAME: ${{ github.actor }}
-          GHCR_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-          DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          DOCKER_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-        run: |
-          docker run --rm quay.io/containers/skopeo:v1.18.0 \
-            copy --multi-arch all \
-            --src-creds "$GHCR_USERNAME:$GHCR_PASSWORD" \
-            --dest-creds "$DOCKER_USERNAME:$DOCKER_TOKEN" \
-            docker://${GHCR_REPO}:${IMAGE_VERSION} \
-            docker://lablabs/cloudflare_exporter:${IMAGE_VERSION}
