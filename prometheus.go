@@ -2,9 +2,10 @@ package main
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/biter777/countries"
 	cfaccounts "github.com/cloudflare/cloudflare-go/v4/accounts"
@@ -58,16 +59,7 @@ const (
 	r2OperationMetricName                        MetricName = "cloudflare_r2_operation_count"
 )
 
-type MetricsSet map[MetricName]struct{}
-
-func (ms MetricsSet) Has(mn MetricName) bool {
-	_, exists := ms[mn]
-	return exists
-}
-
-func (ms MetricsSet) Add(mn MetricName) {
-	ms[mn] = struct{}{}
-}
+type MetricsMap map[MetricName]prometheus.Collector
 
 var (
 	// Requests
@@ -289,175 +281,88 @@ var (
 		Name: r2OperationMetricName.String(),
 		Help: "Number of operations performed by R2",
 	}, []string{"account", "bucket", "operation"})
+
+	metricsMap = MetricsMap{}
 )
 
-func buildAllMetricsSet() MetricsSet {
-	allMetricsSet := MetricsSet{}
-	allMetricsSet.Add(zoneRequestTotalMetricName)
-	allMetricsSet.Add(zoneRequestCachedMetricName)
-	allMetricsSet.Add(zoneRequestSSLEncryptedMetricName)
-	allMetricsSet.Add(zoneRequestContentTypeMetricName)
-	allMetricsSet.Add(zoneRequestCountryMetricName)
-	allMetricsSet.Add(zoneRequestHTTPStatusMetricName)
-	allMetricsSet.Add(zoneRequestBrowserMapMetricName)
-	allMetricsSet.Add(zoneRequestOriginStatusCountryHostMetricName)
-	allMetricsSet.Add(zoneRequestStatusCountryHostMetricName)
-	allMetricsSet.Add(zoneBandwidthTotalMetricName)
-	allMetricsSet.Add(zoneBandwidthCachedMetricName)
-	allMetricsSet.Add(zoneBandwidthSSLEncryptedMetricName)
-	allMetricsSet.Add(zoneBandwidthContentTypeMetricName)
-	allMetricsSet.Add(zoneBandwidthCountryMetricName)
-	allMetricsSet.Add(zoneThreatsTotalMetricName)
-	allMetricsSet.Add(zoneThreatsCountryMetricName)
-	allMetricsSet.Add(zoneThreatsTypeMetricName)
-	allMetricsSet.Add(zonePageviewsTotalMetricName)
-	allMetricsSet.Add(zoneUniquesTotalMetricName)
-	allMetricsSet.Add(zoneColocationVisitsMetricName)
-	allMetricsSet.Add(zoneColocationEdgeResponseBytesMetricName)
-	allMetricsSet.Add(zoneColocationRequestsTotalMetricName)
-	allMetricsSet.Add(zoneFirewallEventsCountMetricName)
-	allMetricsSet.Add(zoneHealthCheckEventsOriginCountMetricName)
-	allMetricsSet.Add(workerRequestsMetricName)
-	allMetricsSet.Add(workerErrorsMetricName)
-	allMetricsSet.Add(workerCPUTimeMetricName)
-	allMetricsSet.Add(workerDurationMetricName)
-	allMetricsSet.Add(poolHealthStatusMetricName)
-	allMetricsSet.Add(poolOriginHealthStatusMetricName)
-	allMetricsSet.Add(poolRequestsTotalMetricName)
-	allMetricsSet.Add(logpushFailedJobsAccountMetricName)
-	allMetricsSet.Add(logpushFailedJobsZoneMetricName)
-	allMetricsSet.Add(r2StorageTotalMetricName)
-	allMetricsSet.Add(r2OperationMetricName)
-	return allMetricsSet
+func init() {
+	metricsMap[zoneRequestTotalMetricName] = zoneRequestTotal
+	metricsMap[zoneRequestCachedMetricName] = zoneRequestCached
+	metricsMap[zoneRequestSSLEncryptedMetricName] = zoneRequestSSLEncrypted
+	metricsMap[zoneRequestContentTypeMetricName] = zoneRequestContentType
+	metricsMap[zoneRequestCountryMetricName] = zoneRequestCountry
+	metricsMap[zoneRequestHTTPStatusMetricName] = zoneRequestHTTPStatus
+	metricsMap[zoneRequestBrowserMapMetricName] = zoneRequestBrowserMap
+	metricsMap[zoneRequestOriginStatusCountryHostMetricName] = zoneRequestOriginStatusCountryHost
+	metricsMap[zoneRequestStatusCountryHostMetricName] = zoneRequestStatusCountryHost
+	metricsMap[zoneBandwidthTotalMetricName] = zoneBandwidthTotal
+	metricsMap[zoneBandwidthCachedMetricName] = zoneBandwidthCached
+	metricsMap[zoneBandwidthSSLEncryptedMetricName] = zoneBandwidthSSLEncrypted
+	metricsMap[zoneBandwidthContentTypeMetricName] = zoneBandwidthContentType
+	metricsMap[zoneBandwidthCountryMetricName] = zoneBandwidthCountry
+	metricsMap[zoneThreatsTotalMetricName] = zoneThreatsTotal
+	metricsMap[zoneThreatsCountryMetricName] = zoneThreatsCountry
+	metricsMap[zoneThreatsTypeMetricName] = zoneThreatsType
+	metricsMap[zonePageviewsTotalMetricName] = zonePageviewsTotal
+	metricsMap[zoneUniquesTotalMetricName] = zoneUniquesTotal
+	metricsMap[zoneColocationVisitsMetricName] = zoneColocationVisits
+	metricsMap[zoneColocationEdgeResponseBytesMetricName] = zoneColocationEdgeResponseBytes
+	metricsMap[zoneColocationRequestsTotalMetricName] = zoneColocationRequestsTotal
+	metricsMap[zoneFirewallEventsCountMetricName] = zoneFirewallEventsCount
+	metricsMap[zoneHealthCheckEventsOriginCountMetricName] = zoneHealthCheckEventsOriginCount
+	metricsMap[workerRequestsMetricName] = workerRequests
+	metricsMap[workerErrorsMetricName] = workerErrors
+	metricsMap[workerCPUTimeMetricName] = workerCPUTime
+	metricsMap[workerDurationMetricName] = workerDuration
+	metricsMap[poolHealthStatusMetricName] = poolHealthStatus
+	metricsMap[poolOriginHealthStatusMetricName] = poolOriginHealthStatus
+	metricsMap[poolRequestsTotalMetricName] = poolRequestsTotal
+	metricsMap[logpushFailedJobsAccountMetricName] = logpushFailedJobsAccount
+	metricsMap[logpushFailedJobsZoneMetricName] = logpushFailedJobsZone
+	metricsMap[r2StorageTotalMetricName] = r2StorageTotal
+	metricsMap[r2StorageMetricName] = r2Storage
+	metricsMap[r2OperationMetricName] = r2Operation
 }
 
-func buildFilteredMetricsSet(metricsDenylist []string) (MetricsSet, error) {
-	deniedMetricsSet := MetricsSet{}
-	allMetricsSet := buildAllMetricsSet()
-
+func buildDeniedMetricsSet(metricsDenylist []string) (MetricsMap, error) {
+	out := maps.Clone(metricsMap)
 	for _, metric := range metricsDenylist {
-		if !allMetricsSet.Has(MetricName(metric)) {
-			return nil, fmt.Errorf("metric %s doesn't exists", metric)
+		name := MetricName(metric)
+		if _, found := out[name]; !found {
+			return nil, fmt.Errorf("metric %s doesn't exists", name)
 		}
-		deniedMetricsSet.Add(MetricName(metric))
+		delete(out, name)
 	}
-	return deniedMetricsSet, nil
+	return out, nil
 }
 
-func mustRegisterMetrics(deniedMetrics MetricsSet) {
-	if !deniedMetrics.Has(zoneRequestTotalMetricName) {
-		prometheus.MustRegister(zoneRequestTotal)
+func buildAllowedMetricsSet(allowList []string) (MetricsMap, error) {
+	out := MetricsMap{}
+	for _, metric := range allowList {
+		name := MetricName(metric)
+		metric, found := metricsMap[name]
+		if !found {
+			return nil, fmt.Errorf("metric %s doesn't exists", name)
+		}
+		out[name] = metric
 	}
-	if !deniedMetrics.Has(zoneRequestCachedMetricName) {
-		prometheus.MustRegister(zoneRequestCached)
-	}
-	if !deniedMetrics.Has(zoneRequestSSLEncryptedMetricName) {
-		prometheus.MustRegister(zoneRequestSSLEncrypted)
-	}
-	if !deniedMetrics.Has(zoneRequestContentTypeMetricName) {
-		prometheus.MustRegister(zoneRequestContentType)
-	}
-	if !deniedMetrics.Has(zoneRequestCountryMetricName) {
-		prometheus.MustRegister(zoneRequestCountry)
-	}
-	if !deniedMetrics.Has(zoneRequestHTTPStatusMetricName) {
-		prometheus.MustRegister(zoneRequestHTTPStatus)
-	}
-	if !deniedMetrics.Has(zoneRequestBrowserMapMetricName) {
-		prometheus.MustRegister(zoneRequestBrowserMap)
-	}
-	if !deniedMetrics.Has(zoneRequestOriginStatusCountryHostMetricName) {
-		prometheus.MustRegister(zoneRequestOriginStatusCountryHost)
-	}
-	if !deniedMetrics.Has(zoneRequestStatusCountryHostMetricName) {
-		prometheus.MustRegister(zoneRequestStatusCountryHost)
-	}
-	if !deniedMetrics.Has(zoneBandwidthTotalMetricName) {
-		prometheus.MustRegister(zoneBandwidthTotal)
-	}
-	if !deniedMetrics.Has(zoneBandwidthCachedMetricName) {
-		prometheus.MustRegister(zoneBandwidthCached)
-	}
-	if !deniedMetrics.Has(zoneBandwidthSSLEncryptedMetricName) {
-		prometheus.MustRegister(zoneBandwidthSSLEncrypted)
-	}
-	if !deniedMetrics.Has(zoneBandwidthContentTypeMetricName) {
-		prometheus.MustRegister(zoneBandwidthContentType)
-	}
-	if !deniedMetrics.Has(zoneBandwidthCountryMetricName) {
-		prometheus.MustRegister(zoneBandwidthCountry)
-	}
-	if !deniedMetrics.Has(zoneThreatsTotalMetricName) {
-		prometheus.MustRegister(zoneThreatsTotal)
-	}
-	if !deniedMetrics.Has(zoneThreatsCountryMetricName) {
-		prometheus.MustRegister(zoneThreatsCountry)
-	}
-	if !deniedMetrics.Has(zoneThreatsTypeMetricName) {
-		prometheus.MustRegister(zoneThreatsType)
-	}
-	if !deniedMetrics.Has(zonePageviewsTotalMetricName) {
-		prometheus.MustRegister(zonePageviewsTotal)
-	}
-	if !deniedMetrics.Has(zoneUniquesTotalMetricName) {
-		prometheus.MustRegister(zoneUniquesTotal)
-	}
-	if !deniedMetrics.Has(zoneColocationVisitsMetricName) {
-		prometheus.MustRegister(zoneColocationVisits)
-	}
-	if !deniedMetrics.Has(zoneColocationEdgeResponseBytesMetricName) {
-		prometheus.MustRegister(zoneColocationEdgeResponseBytes)
-	}
-	if !deniedMetrics.Has(zoneColocationRequestsTotalMetricName) {
-		prometheus.MustRegister(zoneColocationRequestsTotal)
-	}
-	if !deniedMetrics.Has(zoneFirewallEventsCountMetricName) {
-		prometheus.MustRegister(zoneFirewallEventsCount)
-	}
-	if !deniedMetrics.Has(zoneHealthCheckEventsOriginCountMetricName) {
-		prometheus.MustRegister(zoneHealthCheckEventsOriginCount)
-	}
-	if !deniedMetrics.Has(workerRequestsMetricName) {
-		prometheus.MustRegister(workerRequests)
-	}
-	if !deniedMetrics.Has(workerErrorsMetricName) {
-		prometheus.MustRegister(workerErrors)
-	}
-	if !deniedMetrics.Has(workerCPUTimeMetricName) {
-		prometheus.MustRegister(workerCPUTime)
-	}
-	if !deniedMetrics.Has(workerDurationMetricName) {
-		prometheus.MustRegister(workerDuration)
-	}
-	if !deniedMetrics.Has(poolHealthStatusMetricName) {
-		prometheus.MustRegister(poolHealthStatus)
-	}
-	if !deniedMetrics.Has(poolOriginHealthStatusMetricName) {
-		prometheus.MustRegister(poolOriginHealthStatus)
-	}
-	if !deniedMetrics.Has(poolRequestsTotalMetricName) {
-		prometheus.MustRegister(poolRequestsTotal)
-	}
-	if !deniedMetrics.Has(logpushFailedJobsAccountMetricName) {
-		prometheus.MustRegister(logpushFailedJobsAccount)
-	}
-	if !deniedMetrics.Has(logpushFailedJobsZoneMetricName) {
-		prometheus.MustRegister(logpushFailedJobsZone)
-	}
-	if !deniedMetrics.Has(r2StorageTotalMetricName) {
-		prometheus.MustRegister(r2StorageTotal)
-	}
-	if !deniedMetrics.Has(r2StorageMetricName) {
-		prometheus.MustRegister(r2Storage)
-	}
-	if !deniedMetrics.Has(r2OperationMetricName) {
-		prometheus.MustRegister(r2Operation)
-	}
+	return out, nil
 }
 
-func fetchLoadblancerPoolsHealth(account cfaccounts.Account, wg *sync.WaitGroup) {
-	wg.Add(1)
-	defer wg.Done()
+// check if none of the `metricNames` are in `metrics` we can skip
+func shouldSkip(metrics MetricsMap, metricNames ...MetricName) bool {
+	for name := range metrics {
+		if slices.Contains(metricNames, name) {
+			return false
+		}
+	}
+	return true
+}
+
+func fetchLoadblancerPoolsHealth(metrics MetricsMap, account cfaccounts.Account) {
+	if shouldSkip(metrics, poolOriginHealthStatusMetricName) {
+		return
+	}
 
 	pools := fetchLoadblancerPools(account)
 	if pools == nil {
@@ -490,9 +395,16 @@ func fetchLoadblancerPoolsHealth(account cfaccounts.Account, wg *sync.WaitGroup)
 	}
 }
 
-func fetchWorkerAnalytics(account cfaccounts.Account, wg *sync.WaitGroup) {
-	wg.Add(1)
-	defer wg.Done()
+func fetchWorkerAnalytics(metrics MetricsMap, account cfaccounts.Account) {
+	if shouldSkip(
+		metrics,
+		workerRequestsMetricName,
+		workerErrorsMetricName,
+		workerCPUTimeMetricName,
+		workerDurationMetricName,
+	) {
+		return
+	}
 
 	r, err := fetchWorkerTotals(account.ID)
 	if err != nil {
@@ -505,23 +417,30 @@ func fetchWorkerAnalytics(account cfaccounts.Account, wg *sync.WaitGroup) {
 
 	for _, a := range r.Viewer.Accounts {
 		for _, w := range a.WorkersInvocationsAdaptive {
-			workerRequests.With(prometheus.Labels{"script_name": w.Dimensions.ScriptName, "account": accountName, "status": w.Dimensions.Status}).Add(float64(w.Sum.Requests))
-			workerErrors.With(prometheus.Labels{"script_name": w.Dimensions.ScriptName, "account": accountName, "status": w.Dimensions.Status}).Add(float64(w.Sum.Errors))
-			workerCPUTime.With(prometheus.Labels{"script_name": w.Dimensions.ScriptName, "account": accountName, "status": w.Dimensions.Status, "quantile": "P50"}).Set(float64(w.Quantiles.CPUTimeP50))
-			workerCPUTime.With(prometheus.Labels{"script_name": w.Dimensions.ScriptName, "account": accountName, "status": w.Dimensions.Status, "quantile": "P75"}).Set(float64(w.Quantiles.CPUTimeP75))
-			workerCPUTime.With(prometheus.Labels{"script_name": w.Dimensions.ScriptName, "account": accountName, "status": w.Dimensions.Status, "quantile": "P99"}).Set(float64(w.Quantiles.CPUTimeP99))
-			workerCPUTime.With(prometheus.Labels{"script_name": w.Dimensions.ScriptName, "account": accountName, "status": w.Dimensions.Status, "quantile": "P999"}).Set(float64(w.Quantiles.CPUTimeP999))
-			workerDuration.With(prometheus.Labels{"script_name": w.Dimensions.ScriptName, "account": accountName, "status": w.Dimensions.Status, "quantile": "P50"}).Set(float64(w.Quantiles.DurationP50))
-			workerDuration.With(prometheus.Labels{"script_name": w.Dimensions.ScriptName, "account": accountName, "status": w.Dimensions.Status, "quantile": "P75"}).Set(float64(w.Quantiles.DurationP75))
-			workerDuration.With(prometheus.Labels{"script_name": w.Dimensions.ScriptName, "account": accountName, "status": w.Dimensions.Status, "quantile": "P99"}).Set(float64(w.Quantiles.DurationP99))
-			workerDuration.With(prometheus.Labels{"script_name": w.Dimensions.ScriptName, "account": accountName, "status": w.Dimensions.Status, "quantile": "P999"}).Set(float64(w.Quantiles.DurationP999))
+			baseLabels := prometheus.Labels{"script_name": w.Dimensions.ScriptName, "account": accountName, "status": w.Dimensions.Status}
+
+			workerRequests.With(baseLabels).Add(float64(w.Sum.Requests))
+			workerErrors.With(baseLabels).Add(float64(w.Sum.Errors))
+
+			labeledCPUTime, _ := workerCPUTime.CurryWith(baseLabels)
+			labeledCPUTime.With(prometheus.Labels{"quantile": "P50"}).Set(float64(w.Quantiles.CPUTimeP50))
+			labeledCPUTime.With(prometheus.Labels{"quantile": "P75"}).Set(float64(w.Quantiles.CPUTimeP75))
+			labeledCPUTime.With(prometheus.Labels{"quantile": "P99"}).Set(float64(w.Quantiles.CPUTimeP99))
+			labeledCPUTime.With(prometheus.Labels{"quantile": "P999"}).Set(float64(w.Quantiles.CPUTimeP999))
+
+			labeledDuration, _ := workerDuration.CurryWith(baseLabels)
+			labeledDuration.With(prometheus.Labels{"quantile": "P50"}).Set(float64(w.Quantiles.DurationP50))
+			labeledDuration.With(prometheus.Labels{"quantile": "P75"}).Set(float64(w.Quantiles.DurationP75))
+			labeledDuration.With(prometheus.Labels{"quantile": "P99"}).Set(float64(w.Quantiles.DurationP99))
+			labeledDuration.With(prometheus.Labels{"quantile": "P999"}).Set(float64(w.Quantiles.DurationP999))
 		}
 	}
 }
 
-func fetchLogpushAnalyticsForAccount(account cfaccounts.Account, wg *sync.WaitGroup) {
-	wg.Add(1)
-	defer wg.Done()
+func fetchLogpushAnalyticsForAccount(metrics MetricsMap, account cfaccounts.Account) {
+	if shouldSkip(metrics, logpushFailedJobsAccountMetricName) {
+		return
+	}
 
 	if viper.GetBool("free_tier") {
 		return
@@ -544,9 +463,15 @@ func fetchLogpushAnalyticsForAccount(account cfaccounts.Account, wg *sync.WaitGr
 	}
 }
 
-func fetchR2StorageForAccount(account cfaccounts.Account, wg *sync.WaitGroup) {
-	wg.Add(1)
-	defer wg.Done()
+func fetchR2StorageForAccount(metrics MetricsMap, account cfaccounts.Account) {
+	if shouldSkip(
+		metrics,
+		r2StorageMetricName,
+		r2OperationMetricName,
+		r2StorageTotalMetricName,
+	) {
+		return
+	}
 
 	r, err := fetchR2Account(account.ID)
 
@@ -566,9 +491,10 @@ func fetchR2StorageForAccount(account cfaccounts.Account, wg *sync.WaitGroup) {
 	}
 }
 
-func fetchLogpushAnalyticsForZone(zones []cfzones.Zone, wg *sync.WaitGroup) {
-	wg.Add(1)
-	defer wg.Done()
+func fetchLogpushAnalyticsForZone(metrics MetricsMap, zones []cfzones.Zone) {
+	if shouldSkip(metrics, logpushFailedJobsZoneMetricName) {
+		return
+	}
 
 	if viper.GetBool("free_tier") {
 		return
@@ -588,16 +514,24 @@ func fetchLogpushAnalyticsForZone(zones []cfzones.Zone, wg *sync.WaitGroup) {
 
 	for _, zone := range r.Viewer.Zones {
 		for _, LogpushHealthAdaptiveGroup := range zone.LogpushHealthAdaptiveGroups {
-			logpushFailedJobsZone.With(prometheus.Labels{"destination": LogpushHealthAdaptiveGroup.Dimensions.DestinationType,
-				"job_id": strconv.Itoa(LogpushHealthAdaptiveGroup.Dimensions.JobID),
-				"final":  strconv.Itoa(LogpushHealthAdaptiveGroup.Dimensions.Final)}).Add(float64(LogpushHealthAdaptiveGroup.Count))
+			logpushFailedJobsZone.With(prometheus.Labels{
+				"destination": LogpushHealthAdaptiveGroup.Dimensions.DestinationType,
+				"job_id":      strconv.Itoa(LogpushHealthAdaptiveGroup.Dimensions.JobID),
+				"final":       strconv.Itoa(LogpushHealthAdaptiveGroup.Dimensions.Final),
+			}).Add(float64(LogpushHealthAdaptiveGroup.Count))
 		}
 	}
 }
 
-func fetchZoneColocationAnalytics(zones []cfzones.Zone, wg *sync.WaitGroup) {
-	wg.Add(1)
-	defer wg.Done()
+func fetchZoneColocationAnalytics(metrics MetricsMap, zones []cfzones.Zone) {
+	if shouldSkip(
+		metrics,
+		zoneColocationVisitsMetricName,
+		zoneColocationEdgeResponseBytesMetricName,
+		zoneColocationRequestsTotalMetricName,
+	) {
+		return
+	}
 
 	// Colocation metrics are not available in non-enterprise zones
 	if viper.GetBool("free_tier") {
@@ -618,16 +552,44 @@ func fetchZoneColocationAnalytics(zones []cfzones.Zone, wg *sync.WaitGroup) {
 		cg := z.ColoGroups
 		name, account := findZoneAccountName(zones, z.ZoneTag)
 		for _, c := range cg {
-			zoneColocationVisits.With(prometheus.Labels{"zone": name, "account": account, "colocation": c.Dimensions.ColoCode, "host": c.Dimensions.Host}).Add(float64(c.Sum.Visits))
-			zoneColocationEdgeResponseBytes.With(prometheus.Labels{"zone": name, "account": account, "colocation": c.Dimensions.ColoCode, "host": c.Dimensions.Host}).Add(float64(c.Sum.EdgeResponseBytes))
-			zoneColocationRequestsTotal.With(prometheus.Labels{"zone": name, "account": account, "colocation": c.Dimensions.ColoCode, "host": c.Dimensions.Host}).Add(float64(c.Count))
+			label := prometheus.Labels{"zone": name, "account": account, "colocation": c.Dimensions.ColoCode, "host": c.Dimensions.Host}
+			zoneColocationVisits.With(label).Add(float64(c.Sum.Visits))
+			zoneColocationEdgeResponseBytes.With(label).Add(float64(c.Sum.EdgeResponseBytes))
+			zoneColocationRequestsTotal.With(label).Add(float64(c.Count))
 		}
 	}
 }
 
-func fetchZoneAnalytics(zones []cfzones.Zone, wg *sync.WaitGroup) {
-	wg.Add(1)
-	defer wg.Done()
+func fetchZoneAnalytics(metrics MetricsMap, zones []cfzones.Zone) {
+	if shouldSkip(
+		metrics,
+		zoneRequestTotalMetricName,
+		zoneRequestCachedMetricName,
+		zoneRequestSSLEncryptedMetricName,
+		zoneRequestContentTypeMetricName,
+		zoneBandwidthContentTypeMetricName,
+		zoneRequestCountryMetricName,
+		zoneBandwidthCountryMetricName,
+		zoneThreatsCountryMetricName,
+		zoneRequestHTTPStatusMetricName,
+		zoneRequestBrowserMapMetricName,
+		zoneBandwidthTotalMetricName,
+		zoneBandwidthCachedMetricName,
+		zoneBandwidthSSLEncryptedMetricName,
+		zoneThreatsTotalMetricName,
+		zoneThreatsTypeMetricName,
+		zonePageviewsTotalMetricName,
+		zoneUniquesTotalMetricName,
+
+		zoneFirewallEventsCountMetricName,
+
+		zoneHealthCheckEventsOriginCountMetricName,
+
+		zoneRequestOriginStatusCountryHostMetricName,
+		zoneRequestStatusCountryHostMetricName,
+	) {
+		return
+	}
 
 	// None of the below referenced metrics are available in the free tier
 	if viper.GetBool("free_tier") {
@@ -650,7 +612,7 @@ func fetchZoneAnalytics(zones []cfzones.Zone, wg *sync.WaitGroup) {
 		z := z
 
 		addHTTPGroups(&z, name, account)
-		addFirewallGroups(&z, name, account)
+		addFirewallGroups(metrics, &z, name, account)
 		addHealthCheckGroups(&z, name, account)
 		addHTTPAdaptiveGroups(&z, name, account)
 	}
@@ -664,22 +626,26 @@ func addHTTPGroups(z *zoneResp, name string, account string) {
 
 	zt := z.HTTP1mGroups[0]
 
-	zoneRequestTotal.With(prometheus.Labels{"zone": name, "account": account}).Add(float64(zt.Sum.Requests))
-	zoneRequestCached.With(prometheus.Labels{"zone": name, "account": account}).Add(float64(zt.Sum.CachedRequests))
-	zoneRequestSSLEncrypted.With(prometheus.Labels{"zone": name, "account": account}).Add(float64(zt.Sum.EncryptedRequests))
+	zoneAccountLabel := prometheus.Labels{"zone": name, "account": account}
+	zoneRequestTotal.With(zoneAccountLabel).Add(float64(zt.Sum.Requests))
+	zoneRequestCached.With(zoneAccountLabel).Add(float64(zt.Sum.CachedRequests))
+	zoneRequestSSLEncrypted.With(zoneAccountLabel).Add(float64(zt.Sum.EncryptedRequests))
 
 	for _, ct := range zt.Sum.ContentType {
-		zoneRequestContentType.With(prometheus.Labels{"zone": name, "account": account, "content_type": ct.EdgeResponseContentType}).Add(float64(ct.Requests))
-		zoneBandwidthContentType.With(prometheus.Labels{"zone": name, "account": account, "content_type": ct.EdgeResponseContentType}).Add(float64(ct.Bytes))
+		label := prometheus.Labels{"zone": name, "account": account, "content_type": ct.EdgeResponseContentType}
+		zoneRequestContentType.With(label).Add(float64(ct.Requests))
+		zoneBandwidthContentType.With(label).Add(float64(ct.Bytes))
 	}
 
 	for _, country := range zt.Sum.Country {
 		c := countries.ByName(country.ClientCountryName)
 		region := c.Info().Region.Info().Name
 
-		zoneRequestCountry.With(prometheus.Labels{"zone": name, "account": account, "country": country.ClientCountryName, "region": region}).Add(float64(country.Requests))
-		zoneBandwidthCountry.With(prometheus.Labels{"zone": name, "account": account, "country": country.ClientCountryName, "region": region}).Add(float64(country.Bytes))
-		zoneThreatsCountry.With(prometheus.Labels{"zone": name, "account": account, "country": country.ClientCountryName, "region": region}).Add(float64(country.Threats))
+		label := prometheus.Labels{"zone": name, "account": account, "country": country.ClientCountryName, "region": region}
+
+		zoneRequestCountry.With(label).Add(float64(country.Requests))
+		zoneBandwidthCountry.With(label).Add(float64(country.Bytes))
+		zoneThreatsCountry.With(label).Add(float64(country.Threats))
 	}
 
 	for _, status := range zt.Sum.ResponseStatus {
@@ -690,23 +656,27 @@ func addHTTPGroups(z *zoneResp, name string, account string) {
 		zoneRequestBrowserMap.With(prometheus.Labels{"zone": name, "account": account, "family": browser.UaBrowserFamily}).Add(float64(browser.PageViews))
 	}
 
-	zoneBandwidthTotal.With(prometheus.Labels{"zone": name, "account": account}).Add(float64(zt.Sum.Bytes))
-	zoneBandwidthCached.With(prometheus.Labels{"zone": name, "account": account}).Add(float64(zt.Sum.CachedBytes))
-	zoneBandwidthSSLEncrypted.With(prometheus.Labels{"zone": name, "account": account}).Add(float64(zt.Sum.EncryptedBytes))
+	zoneBandwidthTotal.With(zoneAccountLabel).Add(float64(zt.Sum.Bytes))
+	zoneBandwidthCached.With(zoneAccountLabel).Add(float64(zt.Sum.CachedBytes))
+	zoneBandwidthSSLEncrypted.With(zoneAccountLabel).Add(float64(zt.Sum.EncryptedBytes))
 
-	zoneThreatsTotal.With(prometheus.Labels{"zone": name, "account": account}).Add(float64(zt.Sum.Threats))
+	zoneThreatsTotal.With(zoneAccountLabel).Add(float64(zt.Sum.Threats))
 
 	for _, t := range zt.Sum.ThreatPathing {
 		zoneThreatsType.With(prometheus.Labels{"zone": name, "account": account, "type": t.Name}).Add(float64(t.Requests))
 	}
 
-	zonePageviewsTotal.With(prometheus.Labels{"zone": name, "account": account}).Add(float64(zt.Sum.PageViews))
+	zonePageviewsTotal.With(zoneAccountLabel).Add(float64(zt.Sum.PageViews))
 
 	// Uniques
-	zoneUniquesTotal.With(prometheus.Labels{"zone": name, "account": account}).Add(float64(zt.Unique.Uniques))
+	zoneUniquesTotal.With(zoneAccountLabel).Add(float64(zt.Unique.Uniques))
 }
 
-func addFirewallGroups(z *zoneResp, name string, account string) {
+func addFirewallGroups(metrics MetricsMap, z *zoneResp, name string, account string) {
+	if shouldSkip(metrics, zoneFirewallEventsCountMetricName) {
+		return
+	}
+
 	// Nothing to do.
 	if len(z.FirewallEventsAdaptiveGroups) == 0 {
 		return
@@ -777,10 +747,14 @@ func addHTTPAdaptiveGroups(z *zoneResp, name string, account string) {
 	}
 }
 
-func fetchLoadBalancerAnalytics(zones []cfzones.Zone, wg *sync.WaitGroup) {
-	wg.Add(1)
-	defer wg.Done()
-
+func fetchLoadBalancerAnalytics(metrics MetricsMap, zones []cfzones.Zone) {
+	if shouldSkip(
+		metrics,
+		poolHealthStatusMetricName,
+		poolRequestsTotalMetricName,
+	) {
+		return
+	}
 	// None of the below referenced metrics are available in the free tier
 	if viper.GetBool("free_tier") {
 		return
