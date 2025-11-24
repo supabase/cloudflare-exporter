@@ -44,6 +44,12 @@ type cloudflareResponseLb struct {
 	} `json:"viewer"`
 }
 
+type cloudflareResponseWorkerRequests struct {
+	Viewer struct {
+		Zones []workerRequestResp `json:"zones"`
+	} `json:"viewer"`
+}
+
 type cloudflareResponseLogpushAccount struct {
 	Viewer struct {
 		Accounts []logpushResponse `json:"accounts"`
@@ -282,6 +288,21 @@ type lbResp struct {
 	} `json:"loadBalancingRequestsAdaptive"`
 
 	ZoneTag string `json:"zoneTag"`
+}
+
+type workerRequestResp struct {
+	ZoneID string `json:"zoneTag"`
+	Data   []struct {
+		Dimensions struct {
+			ScriptID uint64 `json:"constantScriptId"`
+			Status   uint64 `json:"httpResponseStatus"`
+			Datetime string `json:"datetimeMinute"`
+		} `json:"dimensions"`
+		Sum struct {
+			Subrequests uint64 `json:"subrequests"`
+			Requests    uint64 `json:"requests"`
+		} `json:"sum"`
+	} `json:"workersZoneInvocationsAdaptiveGroups"`
 }
 
 func fetchLoadblancerPools(account cfaccounts.Account) []cfload_balancers.Pool {
@@ -629,6 +650,52 @@ func fetchColoTotals(zoneIDs []string) (*cloudflareResponseColo, error) {
 	var resp cloudflareResponseColo
 	if err := gql.Client.Run(ctx, request, &resp); err != nil {
 		log.Errorf("failed to fetch colocation totals, err:%v", err)
+		return nil, err
+	}
+
+	return &resp, nil
+}
+
+func fetchZoneWorkerRequestTotals(zoneIDs []string) (*cloudflareResponseWorkerRequests, error) {
+	request := graphql.NewRequest(`
+	query ($zoneIDs: [string!], $mintime: Time!, $maxtime: Time!, $limit: uint64!) {
+		viewer {
+			zones(filter: {zoneTag_in: $zoneIDs} ) {
+				zoneTag
+				workersZoneInvocationsAdaptiveGroups(
+					limit: $limit
+					filter: {datetime_geq: $mintime, datetime_lt: $maxtime}
+				) {
+					sum {
+						subrequests
+						requests
+					}
+					dimensions {
+						constantScriptId
+						httpResponseStatus
+						datetimeMinute
+					}
+				}
+			}
+		}
+	}
+`)
+
+	now, now1mAgo := GetTimeRange()
+	request.Var("limit", gqlQueryLimit)
+	request.Var("maxtime", now)
+	request.Var("mintime", now1mAgo)
+	request.Var("zoneIDs", zoneIDs)
+
+	gql.Mu.RLock()
+	defer gql.Mu.RUnlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), cftimeout)
+	defer cancel()
+
+	var resp cloudflareResponseWorkerRequests
+	if err := gql.Client.Run(ctx, request, &resp); err != nil {
+		log.Errorf("error fetching worker totals, err:%v", err)
 		return nil, err
 	}
 

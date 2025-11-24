@@ -45,6 +45,7 @@ const (
 	zoneColocationRequestsTotalMetricName        MetricName = "cloudflare_zone_colocation_requests_total"
 	zoneFirewallEventsCountMetricName            MetricName = "cloudflare_zone_firewall_events_count"
 	zoneHealthCheckEventsOriginCountMetricName   MetricName = "cloudflare_zone_health_check_events_origin_count"
+	zoneWorkerRequestHTTPStatusMetricName        MetricName = "cloudflare_zone_worker_requests_status"
 	workerRequestsMetricName                     MetricName = "cloudflare_worker_requests_count"
 	workerErrorsMetricName                       MetricName = "cloudflare_worker_errors_count"
 	workerCPUTimeMetricName                      MetricName = "cloudflare_worker_cpu_time"
@@ -207,6 +208,12 @@ var (
 	}, []string{"zone", "account", "health_status", "origin_ip", "region", "fqdn"},
 	)
 
+	zoneWorkerRequestHTTPStatus = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: zoneWorkerRequestHTTPStatusMetricName.String(),
+		Help: "Number of requests processed by zone and script ID",
+	}, []string{"zone", "script_id", "status"},
+	)
+
 	workerRequests = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: workerRequestsMetricName.String(),
 		Help: "Number of requests sent to worker by script name",
@@ -310,6 +317,7 @@ func init() {
 	metricsMap[zoneColocationRequestsTotalMetricName] = zoneColocationRequestsTotal
 	metricsMap[zoneFirewallEventsCountMetricName] = zoneFirewallEventsCount
 	metricsMap[zoneHealthCheckEventsOriginCountMetricName] = zoneHealthCheckEventsOriginCount
+	metricsMap[zoneWorkerRequestHTTPStatusMetricName] = zoneWorkerRequestHTTPStatus
 	metricsMap[workerRequestsMetricName] = workerRequests
 	metricsMap[workerErrorsMetricName] = workerErrors
 	metricsMap[workerCPUTimeMetricName] = workerCPUTime
@@ -556,6 +564,34 @@ func fetchZoneColocationAnalytics(metrics MetricsMap, zones []cfzones.Zone) {
 			zoneColocationVisits.With(label).Add(float64(c.Sum.Visits))
 			zoneColocationEdgeResponseBytes.With(label).Add(float64(c.Sum.EdgeResponseBytes))
 			zoneColocationRequestsTotal.With(label).Add(float64(c.Count))
+		}
+	}
+}
+func fetchZoneWorkerAnalytics(metrics MetricsMap, zones []cfzones.Zone) {
+	if shouldSkip(
+		metrics,
+		zoneWorkerRequestHTTPStatusMetricName,
+	) {
+		return
+	}
+
+	zoneIDs := extractZoneIDs(zones)
+	if len(zoneIDs) == 0 {
+		return
+	}
+
+	r, err := fetchZoneWorkerRequestTotals(zoneIDs)
+	if err != nil {
+		log.Error("failed to fetch worker request analytics for zones: ", err)
+		return
+	}
+	for _, z := range r.Viewer.Zones {
+		for _, d := range z.Data {
+			zoneWorkerRequestHTTPStatus.With(prometheus.Labels{
+				"zone":      z.ZoneID,
+				"script_id": strconv.FormatUint(d.Dimensions.ScriptID, 10),
+				"status":    strconv.FormatUint(d.Dimensions.Status, 10),
+			}).Add(float64(d.Sum.Requests))
 		}
 	}
 }
