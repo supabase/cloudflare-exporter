@@ -122,6 +122,7 @@ func fetchMetrics(accounts []cfaccounts.Account, zones []cfzones.Zone, metrics M
 
 	for zonesChunk := range slices.Chunk(zones, cfgraphqlreqlimit) {
 		wg.Go(func() { fetchZoneAnalytics(metrics, zonesChunk) })
+		wg.Go(func() { fetchZoneWorkerAnalytics(metrics, zonesChunk) })
 		wg.Go(func() { fetchZoneColocationAnalytics(metrics, zonesChunk) })
 		wg.Go(func() { fetchLoadBalancerAnalytics(metrics, zonesChunk) })
 		wg.Go(func() { fetchLogpushAnalyticsForZone(metrics, zonesChunk) })
