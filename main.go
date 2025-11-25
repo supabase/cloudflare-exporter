@@ -311,33 +311,28 @@ func main() {
 
 	cftimeout = viper.GetDuration("cf_timeout")
 
+	headers := http.Header{}
+
 	if len(viper.GetString("cf_api_token")) > 0 {
 		cfclient = cf.NewClient(
 			cfoption.WithAPIToken(viper.GetString("cf_api_token")),
 			cfoption.WithRequestTimeout(cftimeout),
 		)
-		middlewares := NewHeaderMiddleware("Authorization", "Bearer "+viper.GetString("cf_api_token"), http.DefaultTransport)
-		gqlHTTPClient := &http.Client{
-			Timeout:   cftimeout,
-			Transport: middlewares,
-		}
-		gql = NewGraphQLClient(gqlHTTPClient)
+		headers.Set("Authorization", "Bearer "+viper.GetString("cf_api_token"))
 	} else if len(viper.GetString("cf_api_email")) > 0 && len(viper.GetString("cf_api_key")) > 0 {
 		cfclient = cf.NewClient(
 			cfoption.WithAPIKey(viper.GetString("cf_api_key")),
 			cfoption.WithAPIEmail(viper.GetString("cf_api_email")),
 			cfoption.WithRequestTimeout(cftimeout),
 		)
-		authEmailHeader := NewHeaderMiddleware("X-AUTH-EMAIL", viper.GetString("cf_api_email"), http.DefaultTransport)
-		middlewares := NewHeaderMiddleware("X-AUTH-KEY", viper.GetString("cf_api_key"), authEmailHeader)
-		gqlHTTPClient := &http.Client{
-			Timeout:   cftimeout,
-			Transport: middlewares,
-		}
-		gql = NewGraphQLClient(gqlHTTPClient)
+
+		headers.Set("X-AUTH-EMAIL", viper.GetString("cf_api_email"))
+		headers.Set("X-AUTH-KEY", viper.GetString("cf_api_key"))
 	} else {
 		log.Fatal("Please provide CF_API_KEY+CF_API_EMAIL or CF_API_TOKEN")
 	}
+
+	gql = NewGraphQLClient(headers)
 
 	cmd.Execute()
 }

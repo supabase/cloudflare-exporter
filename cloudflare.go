@@ -11,8 +11,6 @@ import (
 	cfpagination "github.com/cloudflare/cloudflare-go/v4/packages/pagination"
 	cfrulesets "github.com/cloudflare/cloudflare-go/v4/rulesets"
 	cfzones "github.com/cloudflare/cloudflare-go/v4/zones"
-
-	"github.com/machinebox/graphql"
 )
 
 const (
@@ -487,7 +485,7 @@ func fetchAccounts() []cfaccounts.Account {
 }
 
 func fetchZoneTotals(zoneIDs []string) (*cloudflareResponse, error) {
-	request := graphql.NewRequest(`
+	request := NewGraphQLRequest(`
 query ($zoneIDs: [String!], $mintime: Time!, $maxtime: Time!, $limit: Int!) {
 	viewer {
 		zones(filter: { zoneTag_in: $zoneIDs }) {
@@ -591,14 +589,11 @@ query ($zoneIDs: [String!], $mintime: Time!, $maxtime: Time!, $limit: Int!) {
 	request.Var("mintime", now1mAgo)
 	request.Var("zoneIDs", zoneIDs)
 
-	gql.Mu.RLock()
-	defer gql.Mu.RUnlock()
-
 	ctx, cancel := context.WithTimeout(context.Background(), cftimeout)
 	defer cancel()
 
 	var resp cloudflareResponse
-	if err := gql.Client.Run(ctx, request, &resp); err != nil {
+	if err := gql.Run(ctx, request, &resp); err != nil {
 		log.Errorf("failed to fetch zone totals, err:%v", err)
 		return nil, err
 	}
@@ -607,7 +602,7 @@ query ($zoneIDs: [String!], $mintime: Time!, $maxtime: Time!, $limit: Int!) {
 }
 
 func fetchColoTotals(zoneIDs []string) (*cloudflareResponseColo, error) {
-	request := graphql.NewRequest(`
+	request := NewGraphQLRequest(`
 	query ($zoneIDs: [String!], $mintime: Time!, $maxtime: Time!, $limit: Int!) {
 		viewer {
 			zones(filter: { zoneTag_in: $zoneIDs }) {
@@ -641,14 +636,11 @@ func fetchColoTotals(zoneIDs []string) (*cloudflareResponseColo, error) {
 	request.Var("mintime", now1mAgo)
 	request.Var("zoneIDs", zoneIDs)
 
-	gql.Mu.RLock()
-	defer gql.Mu.RUnlock()
-
 	ctx, cancel := context.WithTimeout(context.Background(), cftimeout)
 	defer cancel()
 
 	var resp cloudflareResponseColo
-	if err := gql.Client.Run(ctx, request, &resp); err != nil {
+	if err := gql.Run(ctx, request, &resp); err != nil {
 		log.Errorf("failed to fetch colocation totals, err:%v", err)
 		return nil, err
 	}
@@ -657,7 +649,7 @@ func fetchColoTotals(zoneIDs []string) (*cloudflareResponseColo, error) {
 }
 
 func fetchZoneWorkerRequestTotals(zoneIDs []string) (*cloudflareResponseWorkerRequests, error) {
-	request := graphql.NewRequest(`
+	request := NewGraphQLRequest(`
 	query ($zoneIDs: [string!], $mintime: Time!, $maxtime: Time!, $limit: uint64!) {
 		viewer {
 			zones(filter: {zoneTag_in: $zoneIDs} ) {
@@ -687,14 +679,11 @@ func fetchZoneWorkerRequestTotals(zoneIDs []string) (*cloudflareResponseWorkerRe
 	request.Var("mintime", now1mAgo)
 	request.Var("zoneIDs", zoneIDs)
 
-	gql.Mu.RLock()
-	defer gql.Mu.RUnlock()
-
 	ctx, cancel := context.WithTimeout(context.Background(), cftimeout)
 	defer cancel()
 
 	var resp cloudflareResponseWorkerRequests
-	if err := gql.Client.Run(ctx, request, &resp); err != nil {
+	if err := gql.Run(ctx, request, &resp); err != nil {
 		log.Errorf("error fetching worker totals, err:%v", err)
 		return nil, err
 	}
@@ -703,7 +692,7 @@ func fetchZoneWorkerRequestTotals(zoneIDs []string) (*cloudflareResponseWorkerRe
 }
 
 func fetchWorkerTotals(accountID string) (*cloudflareResponseAccts, error) {
-	request := graphql.NewRequest(`
+	request := NewGraphQLRequest(`
 	query ($accountID: String!, $mintime: Time!, $maxtime: Time!, $limit: Int!) {
 		viewer {
 			accounts(filter: {accountTag: $accountID} ) {
@@ -741,14 +730,11 @@ func fetchWorkerTotals(accountID string) (*cloudflareResponseAccts, error) {
 	request.Var("mintime", now1mAgo)
 	request.Var("accountID", accountID)
 
-	gql.Mu.RLock()
-	defer gql.Mu.RUnlock()
-
 	ctx, cancel := context.WithTimeout(context.Background(), cftimeout)
 	defer cancel()
 
 	var resp cloudflareResponseAccts
-	if err := gql.Client.Run(ctx, request, &resp); err != nil {
+	if err := gql.Run(ctx, request, &resp); err != nil {
 		log.Errorf("error fetching worker totals, err:%v", err)
 		return nil, err
 	}
@@ -757,7 +743,7 @@ func fetchWorkerTotals(accountID string) (*cloudflareResponseAccts, error) {
 }
 
 func fetchLoadBalancerTotals(zoneIDs []string) (*cloudflareResponseLb, error) {
-	request := graphql.NewRequest(`
+	request := NewGraphQLRequest(`
 	query ($zoneIDs: [String!], $mintime: Time!, $maxtime: Time!, $limit: Int!) {
 		viewer {
 			zones(filter: { zoneTag_in: $zoneIDs }) {
@@ -813,14 +799,11 @@ func fetchLoadBalancerTotals(zoneIDs []string) (*cloudflareResponseLb, error) {
 	request.Var("mintime", now1mAgo)
 	request.Var("zoneIDs", zoneIDs)
 
-	gql.Mu.RLock()
-	defer gql.Mu.RUnlock()
-
 	ctx, cancel := context.WithTimeout(context.Background(), cftimeout)
 	defer cancel()
 
 	var resp cloudflareResponseLb
-	if err := gql.Client.Run(ctx, request, &resp); err != nil {
+	if err := gql.Run(ctx, request, &resp); err != nil {
 		log.Errorf("error fetching load balancer totals, err:%v", err)
 		return nil, err
 	}
@@ -828,7 +811,7 @@ func fetchLoadBalancerTotals(zoneIDs []string) (*cloudflareResponseLb, error) {
 }
 
 func fetchLogpushAccount(accountID string) (*cloudflareResponseLogpushAccount, error) {
-	request := graphql.NewRequest(`query($accountID: String!, $limit: Int!, $mintime: Time!, $maxtime: Time!) {
+	request := NewGraphQLRequest(`query($accountID: String!, $limit: Int!, $mintime: Time!, $maxtime: Time!) {
 		viewer {
 		  accounts(filter: {accountTag : $accountID }) {
 			logpushHealthAdaptiveGroups(
@@ -858,14 +841,11 @@ func fetchLogpushAccount(accountID string) (*cloudflareResponseLogpushAccount, e
 	request.Var("maxtime", now)
 	request.Var("mintime", now1mAgo)
 
-	gql.Mu.RLock()
-	defer gql.Mu.RUnlock()
-
 	var resp cloudflareResponseLogpushAccount
 	ctx, cancel := context.WithTimeout(context.Background(), cftimeout)
 	defer cancel()
 
-	if err := gql.Client.Run(ctx, request, &resp); err != nil {
+	if err := gql.Run(ctx, request, &resp); err != nil {
 		log.Errorf("error fetching logpush account totals, err:%v", err)
 		return nil, err
 	}
@@ -873,7 +853,7 @@ func fetchLogpushAccount(accountID string) (*cloudflareResponseLogpushAccount, e
 }
 
 func fetchLogpushZone(zoneIDs []string) (*cloudflareResponseLogpushZone, error) {
-	request := graphql.NewRequest(`query($zoneIDs: String!, $limit: Int!, $mintime: Time!, $maxtime: Time!) {
+	request := NewGraphQLRequest(`query($zoneIDs: String!, $limit: Int!, $mintime: Time!, $maxtime: Time!) {
 		viewer {
 			zones(filter: {zoneTag_in : $zoneIDs }) {
 			logpushHealthAdaptiveGroups(
@@ -903,14 +883,11 @@ func fetchLogpushZone(zoneIDs []string) (*cloudflareResponseLogpushZone, error) 
 	request.Var("maxtime", now)
 	request.Var("mintime", now1mAgo)
 
-	gql.Mu.RLock()
-	defer gql.Mu.RUnlock()
-
 	ctx, cancel := context.WithTimeout(context.Background(), cftimeout)
 	defer cancel()
 
 	var resp cloudflareResponseLogpushZone
-	if err := gql.Client.Run(ctx, request, &resp); err != nil {
+	if err := gql.Run(ctx, request, &resp); err != nil {
 		log.Errorf("error fetching logpush zone totals, err:%v", err)
 		return nil, err
 	}
@@ -919,7 +896,7 @@ func fetchLogpushZone(zoneIDs []string) (*cloudflareResponseLogpushZone, error) 
 }
 
 func fetchR2Account(accountID string) (*cloudflareResponseR2Account, error) {
-	request := graphql.NewRequest(`query($accountID: String!, $limit: Int!, $date: String!) {
+	request := NewGraphQLRequest(`query($accountID: String!, $limit: Int!, $date: String!) {
 		viewer {
 		  accounts(filter: {accountTag : $accountID }) {
 			r2StorageAdaptiveGroups(
@@ -955,14 +932,11 @@ func fetchR2Account(accountID string) (*cloudflareResponseR2Account, error) {
 	request.Var("limit", gqlQueryLimit)
 	request.Var("date", now.Format("2006-01-02"))
 
-	gql.Mu.RLock()
-	defer gql.Mu.RUnlock()
-
 	ctx, cancel := context.WithTimeout(context.Background(), cftimeout)
 	defer cancel()
 
 	var resp cloudflareResponseR2Account
-	if err := gql.Client.Run(ctx, request, &resp); err != nil {
+	if err := gql.Run(ctx, request, &resp); err != nil {
 		log.Errorf("error fetching R2 account: %v", err)
 		return nil, err
 	}
