@@ -42,6 +42,23 @@ type cloudflareResponseLb struct {
 	} `json:"viewer"`
 }
 
+type cloudflareResponseStatusAdaptive struct {
+	Viewer struct {
+		Zones []zoneRespStatusAdaptive `json:"zones"`
+	} `json:"viewer"`
+}
+
+type zoneRespStatusAdaptive struct {
+	HTTPRequestsAdaptiveGroups []struct {
+		Count      uint64 `json:"count"`
+		Dimensions struct {
+			EdgeResponseStatus uint16 `json:"edgeResponseStatus"`
+		} `json:"dimensions"`
+	} `json:"httpRequestsAdaptiveGroups"`
+
+	ZoneTag string `json:"zoneTag"`
+}
+
 type cloudflareResponseWorkerRequests struct {
 	Viewer struct {
 		Zones []workerRequestResp `json:"zones"`
@@ -739,6 +756,43 @@ func fetchWorkerTotals(accountID string) (*cloudflareResponseAccts, error) {
 		return nil, err
 	}
 
+	return &resp, nil
+}
+
+func fetchZoneStatusAdaptive(zoneIDs []string) (*cloudflareResponseStatusAdaptive, error) {
+	request := NewGraphQLRequest(`
+	query ($zoneIDs: [String!], $mintime: Time!, $maxtime: Time!, $limit: Int!) {
+		viewer {
+			zones(filter: { zoneTag_in: $zoneIDs }) {
+				zoneTag
+				httpRequestsAdaptiveGroups(
+					limit: $limit
+					filter: { datetime_geq: $mintime, datetime_lt: $maxtime }
+				) {
+					count
+					dimensions {
+						edgeResponseStatus
+					}
+				}
+			}
+		}
+	}
+`)
+
+	now, now1mAgo := GetTimeRange()
+	request.Var("limit", gqlQueryLimit)
+	request.Var("maxtime", now)
+	request.Var("mintime", now1mAgo)
+	request.Var("zoneIDs", zoneIDs)
+
+	ctx, cancel := context.WithTimeout(context.Background(), cftimeout)
+	defer cancel()
+
+	var resp cloudflareResponseStatusAdaptive
+	if err := gql.Run(ctx, request, &resp); err != nil {
+		log.Errorf("error fetching zone status adaptive groups, err:%v", err)
+		return nil, err
+	}
 	return &resp, nil
 }
 
