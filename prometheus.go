@@ -27,6 +27,7 @@ const (
 	zoneRequestContentTypeMetricName             MetricName = "cloudflare_zone_requests_content_type"
 	zoneRequestCountryMetricName                 MetricName = "cloudflare_zone_requests_country"
 	zoneRequestHTTPStatusMetricName              MetricName = "cloudflare_zone_requests_status"
+	zoneRequestHTTPStatusV2MetricName            MetricName = "cloudflare_zone_requests_status_v2"
 	zoneRequestBrowserMapMetricName              MetricName = "cloudflare_zone_requests_browser_map_page_views_count"
 	zoneRequestOriginStatusCountryHostMetricName MetricName = "cloudflare_zone_requests_origin_status_country_host"
 	zoneRequestStatusCountryHostMetricName       MetricName = "cloudflare_zone_requests_status_country_host"
@@ -97,6 +98,12 @@ var (
 	zoneRequestHTTPStatus = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: zoneRequestHTTPStatusMetricName.String(),
 		Help: "Number of request for zone per HTTP status",
+	}, []string{"zone", "account", "status"},
+	)
+
+	zoneRequestHTTPStatusV2 = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: zoneRequestHTTPStatusV2MetricName.String(),
+		Help: "Number of request for zone per HTTP status from adaptive groups",
 	}, []string{"zone", "account", "status"},
 	)
 
@@ -299,6 +306,7 @@ func init() {
 	metricsMap[zoneRequestContentTypeMetricName] = zoneRequestContentType
 	metricsMap[zoneRequestCountryMetricName] = zoneRequestCountry
 	metricsMap[zoneRequestHTTPStatusMetricName] = zoneRequestHTTPStatus
+	metricsMap[zoneRequestHTTPStatusV2MetricName] = zoneRequestHTTPStatusV2
 	metricsMap[zoneRequestBrowserMapMetricName] = zoneRequestBrowserMap
 	metricsMap[zoneRequestOriginStatusCountryHostMetricName] = zoneRequestOriginStatusCountryHost
 	metricsMap[zoneRequestStatusCountryHostMetricName] = zoneRequestStatusCountryHost
@@ -608,6 +616,7 @@ func fetchZoneAnalytics(metrics MetricsMap, zones []cfzones.Zone) {
 		zoneBandwidthCountryMetricName,
 		zoneThreatsCountryMetricName,
 		zoneRequestHTTPStatusMetricName,
+		zoneRequestHTTPStatusV2MetricName,
 		zoneRequestBrowserMapMetricName,
 		zoneBandwidthTotalMetricName,
 		zoneBandwidthCachedMetricName,
@@ -651,6 +660,25 @@ func fetchZoneAnalytics(metrics MetricsMap, zones []cfzones.Zone) {
 		addFirewallGroups(metrics, &z, name, account)
 		addHealthCheckGroups(&z, name, account)
 		addHTTPAdaptiveGroups(&z, name, account)
+	}
+
+	// Fetch v2 status metrics using adaptive groups
+	if !shouldSkip(metrics, zoneRequestHTTPStatusV2MetricName) {
+		r2, err := fetchZoneStatusAdaptive(zoneIDs)
+		if err != nil {
+			log.Error("failed to fetch zone status adaptive analytics: ", err)
+		} else {
+			for _, z := range r2.Viewer.Zones {
+				name, account := findZoneAccountName(zones, z.ZoneTag)
+				for _, g := range z.HTTPRequestsAdaptiveGroups {
+					zoneRequestHTTPStatusV2.With(prometheus.Labels{
+						"zone":    name,
+						"account": account,
+						"status":  strconv.Itoa(int(g.Dimensions.EdgeResponseStatus)),
+					}).Add(float64(g.Count))
+				}
+			}
+		}
 	}
 }
 

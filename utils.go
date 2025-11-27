@@ -8,10 +8,17 @@ import (
 )
 
 func GetTimeRange() (now time.Time, now1mAgo time.Time) {
+	scrapeInterval := viper.GetInt("scrape_interval")
+	if scrapeInterval == 0 {
+		scrapeInterval = 60 // Default to 60 seconds if not set
+	}
+
 	now = time.Now().Add(-time.Duration(viper.GetInt("scrape_delay")) * time.Second).UTC()
-	s := 60 * time.Second
+
+	// Truncate to the scrape interval to ensure we query distinct time windows
+	s := time.Duration(scrapeInterval) * time.Second
 	now = now.Truncate(s)
-	now1mAgo = now.Add(-60 * time.Second)
+	now1mAgo = now.Add(-s)
 
 	return now, now1mAgo
 }
