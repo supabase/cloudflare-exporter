@@ -58,6 +58,7 @@ const (
 	r2StorageTotalMetricName                     MetricName = "cloudflare_r2_storage_total_bytes"
 	r2StorageMetricName                          MetricName = "cloudflare_r2_storage_bytes"
 	r2OperationMetricName                        MetricName = "cloudflare_r2_operation_count"
+	zoneCustomHostnamesTotalMetricName           MetricName = "cloudflare_zone_custom_hostnames_total"
 )
 
 type MetricsMap map[MetricName]prometheus.Collector
@@ -289,6 +290,11 @@ var (
 		Help: "Number of operations performed by R2",
 	}, []string{"account", "bucket", "operation"})
 
+	zoneCustomHostnamesTotal = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: zoneCustomHostnamesTotalMetricName.String(),
+		Help: "Total number of custom hostnames configured for the zone",
+	}, []string{"zone", "account"})
+
 	metricsMap = MetricsMap{}
 )
 
@@ -330,6 +336,7 @@ func init() {
 	metricsMap[r2StorageTotalMetricName] = r2StorageTotal
 	metricsMap[r2StorageMetricName] = r2Storage
 	metricsMap[r2OperationMetricName] = r2Operation
+	metricsMap[zoneCustomHostnamesTotalMetricName] = zoneCustomHostnamesTotal
 }
 
 func buildDeniedMetricsSet(metricsDenylist []string) (MetricsMap, error) {
@@ -838,5 +845,24 @@ func addLoadBalancingRequestsAdaptive(z *lbResp, name string, account string) {
 					"pool_name":          p.PoolName,
 				}).Set(float64(p.Healthy))
 		}
+	}
+}
+
+func fetchCustomHostnamesMetrics(metrics MetricsMap, zones []cfzones.Zone) {
+	if shouldSkip(metrics, zoneCustomHostnamesTotalMetricName) {
+		return
+	}
+
+	for _, zone := range zones {
+		count, err := fetchCustomHostnamesCount(zone.ID)
+		if err != nil {
+			log.Errorf("failed to fetch custom hostnames for zone %s: %v", zone.Name, err)
+			continue
+		}
+
+		zoneCustomHostnamesTotal.With(prometheus.Labels{
+			"zone":    zone.Name,
+			"account": zone.Account.Name,
+		}).Set(float64(count))
 	}
 }
