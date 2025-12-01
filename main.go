@@ -1,13 +1,17 @@
 package main
 
 import (
+	"context"
 	"maps"
 	"net/http"
 	_ "net/http/pprof" // #nosec G108 - pprof is controlled via enable_pprof flag
+	"os"
+	"os/signal"
 	"runtime"
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/nelkinda/health-go"
@@ -24,10 +28,9 @@ import (
 )
 
 var (
-	cfclient  *cf.Client
-	cftimeout time.Duration
-	gql       *GraphQL
-	log       = logrus.New()
+	cfclient *cf.Client
+	gql      *GraphQL
+	log      = logrus.New()
 )
 
 // var (
@@ -98,37 +101,71 @@ func filterExcludedZones(all []cfzones.Zone, exclude []string) []cfzones.Zone {
 	return filtered
 }
 
-func fetchMetrics(accounts []cfaccounts.Account, zones []cfzones.Zone, metrics MetricsMap) {
+type metricsCtx struct {
+	startTime time.Time
+	endTime   time.Time
+	metrics   MetricsMap
+}
+
+type metricsCtxKeyType string
+
+const metricsCtxKey = metricsCtxKeyType("metricsCtx")
+
+func ContextWithMetricsCtx(ctx context.Context, startTime, endTime time.Time, metrics MetricsMap) context.Context {
+	return context.WithValue(ctx, metricsCtxKey, &metricsCtx{startTime, endTime, metrics})
+}
+
+func MetricsCtxFromContext(ctx context.Context) *metricsCtx {
+	return ctx.Value(metricsCtxKey).(*metricsCtx)
+}
+
+func SetCommonGQLVars(ctx context.Context, req *GraphQLRequest) {
+	metricsCtx := MetricsCtxFromContext(ctx)
+	req.Var("limit", gqlQueryLimit)
+	req.Var("startTime", metricsCtx.startTime)
+	req.Var("endTime", metricsCtx.endTime)
+}
+
+func fetchMetrics(ctx context.Context, accounts []cfaccounts.Account, zones []cfzones.Zone) {
 	var wg sync.WaitGroup
 
 	for _, a := range accounts {
-		wg.Go(func() { fetchWorkerAnalytics(metrics, a) })
-		wg.Go(func() { fetchLogpushAnalyticsForAccount(metrics, a) })
-		wg.Go(func() { fetchR2StorageForAccount(metrics, a) })
-		wg.Go(func() { fetchLoadblancerPoolsHealth(metrics, a) })
+		wg.Go(func() { fetchWorkerAnalytics(ctx, a) })
+		wg.Go(func() { fetchLogpushAnalyticsForAccount(ctx, a) })
+		wg.Go(func() { fetchR2StorageForAccount(ctx, a) })
+		wg.Go(func() { fetchLoadblancerPoolsHealth(ctx, a) })
 	}
 
 	// if target zones weren't provided, pull zones each loop
 	// that way we catch zones that get added since the exporter
 	// was started
 	if len(zones) == 0 {
-		zones = fetchZones(accounts)
+		zones = fetchZones(ctx, accounts)
 		ezones := getExcludedZones()
 		zones = filterExcludedZones(zones, ezones)
 	}
 
 	for zonesChunk := range slices.Chunk(zones, cfgraphqlreqlimit) {
-		wg.Go(func() { fetchZoneAnalytics(metrics, zonesChunk) })
-		wg.Go(func() { fetchZoneWorkerAnalytics(metrics, zonesChunk) })
-		wg.Go(func() { fetchZoneColocationAnalytics(metrics, zonesChunk) })
-		wg.Go(func() { fetchLoadBalancerAnalytics(metrics, zonesChunk) })
-		wg.Go(func() { fetchLogpushAnalyticsForZone(metrics, zonesChunk) })
+		wg.Go(func() { fetchZoneAnalytics(ctx, zonesChunk) })
+		wg.Go(func() { fetchZoneWorkerAnalytics(ctx, zonesChunk) })
+		wg.Go(func() { fetchZoneColocationAnalytics(ctx, zonesChunk) })
+		wg.Go(func() { fetchLoadBalancerAnalytics(ctx, zonesChunk) })
+		wg.Go(func() { fetchLogpushAnalyticsForZone(ctx, zonesChunk) })
 	}
 
 	wg.Wait()
 }
 
 func runExporter() {
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		quit := make(chan os.Signal, 1)
+		signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+		<-quit
+		log.Info("Shutting down...")
+		cancel()
+	}()
+
 	cfgMetricsPath := viper.GetString("metrics_path")
 
 	// Handle pprof configuration
@@ -174,20 +211,27 @@ func runExporter() {
 	log.Info("Scrape interval set to ", scrapeInterval)
 
 	go func() {
-		accounts := fetchAccounts()
+		accounts := fetchAccounts(ctx)
 
 		// if the target zones argument is set, we only
 		// need to pull zone info once
 		var zones []cfzones.Zone
 		tzones := getTargetZones()
 		if len(tzones) > 0 {
-			zones = fetchZones(accounts)
+			zones = fetchZones(ctx, accounts)
 			zones = filterZones(zones, tzones)
 		}
 
-		go fetchMetrics(accounts, zones, enabledMetrics)
-		for range time.Tick(scrapeInterval) {
-			go fetchMetrics(accounts, zones, enabledMetrics)
+		endTime := time.Now().UTC()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.Tick(scrapeInterval):
+				startTime := endTime
+				endTime = time.Now().UTC()
+				go fetchMetrics(ContextWithMetricsCtx(ctx, startTime, endTime, enabledMetrics), accounts, zones)
+			}
 		}
 	}()
 
@@ -207,6 +251,11 @@ func runExporter() {
 		Addr:              viper.GetString("listen"),
 		ReadHeaderTimeout: 3 * time.Second,
 	}
+
+	go func() {
+		<-ctx.Done()
+		server.Close()
+	}()
 
 	log.Fatal(server.ListenAndServe())
 }
@@ -248,10 +297,6 @@ func main() {
 	flags.String("cf_exclude_zones", "", "cloudflare zones to exclude, comma delimited list of zone ids")
 	viper.BindEnv("cf_exclude_zones")
 	viper.SetDefault("cf_exclude_zones", "")
-
-	flags.Int("scrape_delay", 300, "scrape delay in seconds, defaults to 300")
-	viper.BindEnv("scrape_delay")
-	viper.SetDefault("scrape_delay", 300)
 
 	flags.Int("scrape_interval", 60, "scrape interval in seconds, defaults to 60")
 	viper.BindEnv("scrape_interval")
@@ -302,21 +347,20 @@ func main() {
 		},
 	})
 
-	cftimeout = viper.GetDuration("cf_timeout")
-
+	cfTimeout := viper.GetDuration("cf_timeout")
 	headers := http.Header{}
 
 	if len(viper.GetString("cf_api_token")) > 0 {
 		cfclient = cf.NewClient(
 			cfoption.WithAPIToken(viper.GetString("cf_api_token")),
-			cfoption.WithRequestTimeout(cftimeout),
+			cfoption.WithRequestTimeout(cfTimeout),
 		)
 		headers.Set("Authorization", "Bearer "+viper.GetString("cf_api_token"))
 	} else if len(viper.GetString("cf_api_email")) > 0 && len(viper.GetString("cf_api_key")) > 0 {
 		cfclient = cf.NewClient(
 			cfoption.WithAPIKey(viper.GetString("cf_api_key")),
 			cfoption.WithAPIEmail(viper.GetString("cf_api_email")),
-			cfoption.WithRequestTimeout(cftimeout),
+			cfoption.WithRequestTimeout(cfTimeout),
 		)
 
 		headers.Set("X-AUTH-EMAIL", viper.GetString("cf_api_email"))
@@ -325,7 +369,7 @@ func main() {
 		log.Fatal("Please provide CF_API_KEY+CF_API_EMAIL or CF_API_TOKEN")
 	}
 
-	gql = NewGraphQLClient(headers)
+	gql = NewGraphQLClient(headers, cfTimeout)
 
 	cmd.Execute()
 }

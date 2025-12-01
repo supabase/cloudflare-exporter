@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"maps"
 	"slices"
@@ -365,8 +366,9 @@ func buildAllowedMetricsSet(allowList []string) (MetricsMap, error) {
 }
 
 // check if none of the `metricNames` are in `metrics` we can skip
-func shouldSkip(metrics MetricsMap, metricNames ...MetricName) bool {
-	for name := range metrics {
+func shouldSkip(ctx context.Context, metricNames ...MetricName) bool {
+	metricsCtx := MetricsCtxFromContext(ctx)
+	for name := range metricsCtx.metrics {
 		if slices.Contains(metricNames, name) {
 			return false
 		}
@@ -374,12 +376,12 @@ func shouldSkip(metrics MetricsMap, metricNames ...MetricName) bool {
 	return true
 }
 
-func fetchLoadblancerPoolsHealth(metrics MetricsMap, account cfaccounts.Account) {
-	if shouldSkip(metrics, poolOriginHealthStatusMetricName) {
+func fetchLoadblancerPoolsHealth(ctx context.Context, account cfaccounts.Account) {
+	if shouldSkip(ctx, poolOriginHealthStatusMetricName) {
 		return
 	}
 
-	pools := fetchLoadblancerPools(account)
+	pools := fetchLoadblancerPools(ctx, account)
 	if pools == nil {
 		return
 	}
@@ -410,9 +412,9 @@ func fetchLoadblancerPoolsHealth(metrics MetricsMap, account cfaccounts.Account)
 	}
 }
 
-func fetchWorkerAnalytics(metrics MetricsMap, account cfaccounts.Account) {
+func fetchWorkerAnalytics(ctx context.Context, account cfaccounts.Account) {
 	if shouldSkip(
-		metrics,
+		ctx,
 		workerRequestsMetricName,
 		workerErrorsMetricName,
 		workerCPUTimeMetricName,
@@ -421,7 +423,7 @@ func fetchWorkerAnalytics(metrics MetricsMap, account cfaccounts.Account) {
 		return
 	}
 
-	r, err := fetchWorkerTotals(account.ID)
+	r, err := fetchWorkerTotals(ctx, account.ID)
 	if err != nil {
 		log.Error("failed to fetch worker analytics for account ", account.ID, ": ", err)
 		return
@@ -452,12 +454,12 @@ func fetchWorkerAnalytics(metrics MetricsMap, account cfaccounts.Account) {
 	}
 }
 
-func fetchLogpushAnalyticsForAccount(metrics MetricsMap, account cfaccounts.Account) {
-	if shouldSkip(metrics, logpushFailedJobsAccountMetricName) {
+func fetchLogpushAnalyticsForAccount(ctx context.Context, account cfaccounts.Account) {
+	if shouldSkip(ctx, logpushFailedJobsAccountMetricName) {
 		return
 	}
 
-	r, err := fetchLogpushAccount(account.ID)
+	r, err := fetchLogpushAccount(ctx, account.ID)
 
 	if err != nil {
 		log.Error("failed to fetch logpush analytics for account ", account.ID, ": ", err)
@@ -474,9 +476,9 @@ func fetchLogpushAnalyticsForAccount(metrics MetricsMap, account cfaccounts.Acco
 	}
 }
 
-func fetchR2StorageForAccount(metrics MetricsMap, account cfaccounts.Account) {
+func fetchR2StorageForAccount(ctx context.Context, account cfaccounts.Account) {
 	if shouldSkip(
-		metrics,
+		ctx,
 		r2StorageMetricName,
 		r2OperationMetricName,
 		r2StorageTotalMetricName,
@@ -484,7 +486,7 @@ func fetchR2StorageForAccount(metrics MetricsMap, account cfaccounts.Account) {
 		return
 	}
 
-	r, err := fetchR2Account(account.ID)
+	r, err := fetchR2Account(ctx, account.ID)
 
 	if err != nil {
 		return
@@ -502,8 +504,8 @@ func fetchR2StorageForAccount(metrics MetricsMap, account cfaccounts.Account) {
 	}
 }
 
-func fetchLogpushAnalyticsForZone(metrics MetricsMap, zones []cfzones.Zone) {
-	if shouldSkip(metrics, logpushFailedJobsZoneMetricName) {
+func fetchLogpushAnalyticsForZone(ctx context.Context, zones []cfzones.Zone) {
+	if shouldSkip(ctx, logpushFailedJobsZoneMetricName) {
 		return
 	}
 
@@ -514,7 +516,7 @@ func fetchLogpushAnalyticsForZone(metrics MetricsMap, zones []cfzones.Zone) {
 		return
 	}
 
-	r, err := fetchLogpushZone(zoneIDs)
+	r, err := fetchLogpushZone(ctx, zoneIDs)
 
 	if err != nil {
 		log.Error("failed to fetch logpush analytics for zones: ", err)
@@ -532,9 +534,9 @@ func fetchLogpushAnalyticsForZone(metrics MetricsMap, zones []cfzones.Zone) {
 	}
 }
 
-func fetchZoneColocationAnalytics(metrics MetricsMap, zones []cfzones.Zone) {
+func fetchZoneColocationAnalytics(ctx context.Context, zones []cfzones.Zone) {
 	if shouldSkip(
-		metrics,
+		ctx,
 		zoneColocationVisitsMetricName,
 		zoneColocationEdgeResponseBytesMetricName,
 		zoneColocationRequestsTotalMetricName,
@@ -550,7 +552,7 @@ func fetchZoneColocationAnalytics(metrics MetricsMap, zones []cfzones.Zone) {
 		return
 	}
 
-	r, err := fetchColoTotals(zoneIDs)
+	r, err := fetchColoTotals(ctx, zoneIDs)
 	if err != nil {
 		log.Error("failed to fetch colocation analytics for zones: ", err)
 		return
@@ -566,11 +568,8 @@ func fetchZoneColocationAnalytics(metrics MetricsMap, zones []cfzones.Zone) {
 		}
 	}
 }
-func fetchZoneWorkerAnalytics(metrics MetricsMap, zones []cfzones.Zone) {
-	if shouldSkip(
-		metrics,
-		zoneWorkerRequestHTTPStatusMetricName,
-	) {
+func fetchZoneWorkerAnalytics(ctx context.Context, zones []cfzones.Zone) {
+	if shouldSkip(ctx, zoneWorkerRequestHTTPStatusMetricName) {
 		return
 	}
 
@@ -579,7 +578,7 @@ func fetchZoneWorkerAnalytics(metrics MetricsMap, zones []cfzones.Zone) {
 		return
 	}
 
-	r, err := fetchZoneWorkerRequestTotals(zoneIDs)
+	r, err := fetchZoneWorkerRequestTotals(ctx, zoneIDs)
 	if err != nil {
 		log.Error("failed to fetch worker request analytics for zones: ", err)
 		return
@@ -595,9 +594,9 @@ func fetchZoneWorkerAnalytics(metrics MetricsMap, zones []cfzones.Zone) {
 	}
 }
 
-func fetchZoneAnalytics(metrics MetricsMap, zones []cfzones.Zone) {
+func fetchZoneAnalytics(ctx context.Context, zones []cfzones.Zone) {
 	if shouldSkip(
-		metrics,
+		ctx,
 		zoneRequestTotalMetricName,
 		zoneRequestCachedMetricName,
 		zoneRequestSSLEncryptedMetricName,
@@ -635,7 +634,7 @@ func fetchZoneAnalytics(metrics MetricsMap, zones []cfzones.Zone) {
 		return
 	}
 
-	r, err := fetchZoneTotals(zoneIDs)
+	r, err := fetchZoneTotals(ctx, zoneIDs)
 	if err != nil {
 		log.Error("failed to fetch zone analytics: ", err)
 		return
@@ -646,14 +645,14 @@ func fetchZoneAnalytics(metrics MetricsMap, zones []cfzones.Zone) {
 		z := z
 
 		addHTTPGroups(&z, name, account)
-		addFirewallGroups(metrics, &z, name, account)
+		addFirewallGroups(ctx, &z, name, account)
 		addHealthCheckGroups(&z, name, account)
 		addHTTPAdaptiveGroups(&z, name, account)
 	}
 
 	// Fetch v2 status metrics using adaptive groups
-	if !shouldSkip(metrics, zoneRequestHTTPStatusV2MetricName) {
-		r2, err := fetchZoneStatusAdaptive(zoneIDs)
+	if !shouldSkip(ctx, zoneRequestHTTPStatusV2MetricName) {
+		r2, err := fetchZoneStatusAdaptive(ctx, zoneIDs)
 		if err != nil {
 			log.Error("failed to fetch zone status adaptive analytics: ", err)
 		} else {
@@ -725,8 +724,8 @@ func addHTTPGroups(z *zoneResp, name string, account string) {
 	zoneUniquesTotal.With(zoneAccountLabel).Add(float64(zt.Unique.Uniques))
 }
 
-func addFirewallGroups(metrics MetricsMap, z *zoneResp, name string, account string) {
-	if shouldSkip(metrics, zoneFirewallEventsCountMetricName) {
+func addFirewallGroups(ctx context.Context, z *zoneResp, name string, account string) {
+	if shouldSkip(ctx, zoneFirewallEventsCountMetricName) {
 		return
 	}
 
@@ -734,7 +733,7 @@ func addFirewallGroups(metrics MetricsMap, z *zoneResp, name string, account str
 	if len(z.FirewallEventsAdaptiveGroups) == 0 {
 		return
 	}
-	rulesMap := fetchFirewallRules(z.ZoneTag)
+	rulesMap := fetchFirewallRules(ctx, z.ZoneTag)
 	for _, g := range z.FirewallEventsAdaptiveGroups {
 		zoneFirewallEventsCount.With(
 			prometheus.Labels{
@@ -800,9 +799,9 @@ func addHTTPAdaptiveGroups(z *zoneResp, name string, account string) {
 	}
 }
 
-func fetchLoadBalancerAnalytics(metrics MetricsMap, zones []cfzones.Zone) {
+func fetchLoadBalancerAnalytics(ctx context.Context, zones []cfzones.Zone) {
 	if shouldSkip(
-		metrics,
+		ctx,
 		poolHealthStatusMetricName,
 		poolRequestsTotalMetricName,
 	) {
@@ -816,7 +815,7 @@ func fetchLoadBalancerAnalytics(metrics MetricsMap, zones []cfzones.Zone) {
 		return
 	}
 
-	l, err := fetchLoadBalancerTotals(zoneIDs)
+	l, err := fetchLoadBalancerTotals(ctx, zoneIDs)
 	if err != nil {
 		log.Error("failed to fetch load balancer analytics: ", err)
 		return
