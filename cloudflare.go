@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"slices"
 	"strings"
 
@@ -11,6 +12,7 @@ import (
 	cfload_balancers "github.com/cloudflare/cloudflare-go/v4/load_balancers"
 	cfpagination "github.com/cloudflare/cloudflare-go/v4/packages/pagination"
 	cfrulesets "github.com/cloudflare/cloudflare-go/v4/rulesets"
+	cfworkers "github.com/cloudflare/cloudflare-go/v4/workers"
 	cfzones "github.com/cloudflare/cloudflare-go/v4/zones"
 )
 
@@ -401,6 +403,43 @@ func fetchZones(ctx context.Context, accounts []cfaccounts.Account) []cfzones.Zo
 		zones = append(zones, z...)
 	}
 	return zones
+}
+
+type DeployedVersion struct {
+	ID         string
+	VersionID  string
+	Percentage float64
+}
+
+func getWorkerDeployments(ctx context.Context, accountID string) ([]DeployedVersion, error) {
+	page := cfclient.Workers.Scripts.ListAutoPaging(ctx, cfworkers.ScriptListParams{AccountID: cf.F(accountID)})
+	if page.Err() != nil {
+		return nil, page.Err()
+	}
+
+	versions := []DeployedVersion{}
+	for page.Next() {
+		if page.Err() != nil {
+			return nil, page.Err()
+		}
+
+		script := page.Current()
+		rep, err := cfclient.Workers.Scripts.Deployments.Get(ctx, script.ID, cfworkers.ScriptDeploymentGetParams{
+			AccountID: cf.F(accountID),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to get deployment for %q: %w", script.ID, err)
+		}
+		for _, vs := range rep.Deployments[0].Versions {
+			versions = append(versions, DeployedVersion{
+				ID:         script.ID,
+				VersionID:  vs.VersionID,
+				Percentage: vs.Percentage,
+			})
+		}
+	}
+
+	return versions, nil
 }
 
 func getRuleSetsList(ctx context.Context, params cfrulesets.RulesetListParams) ([]cfrulesets.RulesetListResponse, error) {
