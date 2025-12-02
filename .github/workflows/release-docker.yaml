@@ -29,7 +29,7 @@ jobs:
           go-version-file: "go.mod"
           cache: false
 
-      - uses: ko-build/setup-ko@v# v0.9
+      - uses: ko-build/setup-ko@v0.9
         with:
           version: v0.18.0
 
