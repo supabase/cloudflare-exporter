@@ -222,15 +222,18 @@ func runExporter() {
 			zones = filterZones(zones, tzones)
 		}
 
-		endTime := time.Now().UTC()
+		endTime := time.Now().Truncate(scrapeInterval)
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case <-time.Tick(scrapeInterval):
 				startTime := endTime
-				endTime = time.Now().UTC()
-				go fetchMetrics(ContextWithMetricsCtx(ctx, startTime, endTime, enabledMetrics), accounts, zones)
+				endTime = time.Now().Truncate(scrapeInterval)
+				log.Info("startTime=", startTime, "endTime=", endTime)
+
+				shift := viper.GetDuration("scrape_delay")
+				go fetchMetrics(ContextWithMetricsCtx(ctx, startTime.Add(-shift), endTime.Add(-shift), enabledMetrics), accounts, zones)
 			}
 		}
 	}()
@@ -297,6 +300,10 @@ func main() {
 	flags.String("cf_exclude_zones", "", "cloudflare zones to exclude, comma delimited list of zone ids")
 	viper.BindEnv("cf_exclude_zones")
 	viper.SetDefault("cf_exclude_zones", "")
+
+	flags.Duration("scrape_delay", 1*time.Minute, "shift the time window earlier by this amount, defaults to 1m")
+	viper.BindEnv("scrape_delay")
+	viper.SetDefault("scrape_delay", 1*time.Minute)
 
 	flags.Int("scrape_interval", 60, "scrape interval in seconds, defaults to 60")
 	viper.BindEnv("scrape_interval")
