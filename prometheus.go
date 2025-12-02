@@ -59,6 +59,8 @@ const (
 	r2StorageMetricName                          MetricName = "cloudflare_r2_storage_bytes"
 	r2OperationMetricName                        MetricName = "cloudflare_r2_operation_count"
 	zoneCustomHostnamesTotalMetricName           MetricName = "cloudflare_zone_custom_hostnames_total"
+	zoneCustomHostnamesQuotaAllocatedMetricName  MetricName = "cloudflare_zone_custom_hostnames_quota_allocated"
+	zoneCustomHostnamesQuotaUsedMetricName       MetricName = "cloudflare_zone_custom_hostnames_quota_used"
 )
 
 type MetricsMap map[MetricName]prometheus.Collector
@@ -295,6 +297,16 @@ var (
 		Help: "Total number of custom hostnames configured for the zone",
 	}, []string{"zone", "account"})
 
+	zoneCustomHostnamesQuotaAllocated = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: zoneCustomHostnamesQuotaAllocatedMetricName.String(),
+		Help: "Allocated quota for custom hostnames for the zone",
+	}, []string{"zone", "account"})
+
+	zoneCustomHostnamesQuotaUsed = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: zoneCustomHostnamesQuotaUsedMetricName.String(),
+		Help: "Used custom hostnames quota for the zone",
+	}, []string{"zone", "account"})
+
 	metricsMap = MetricsMap{}
 )
 
@@ -337,6 +349,8 @@ func init() {
 	metricsMap[r2StorageMetricName] = r2Storage
 	metricsMap[r2OperationMetricName] = r2Operation
 	metricsMap[zoneCustomHostnamesTotalMetricName] = zoneCustomHostnamesTotal
+	metricsMap[zoneCustomHostnamesQuotaAllocatedMetricName] = zoneCustomHostnamesQuotaAllocated
+	metricsMap[zoneCustomHostnamesQuotaUsedMetricName] = zoneCustomHostnamesQuotaUsed
 }
 
 func buildDeniedMetricsSet(metricsDenylist []string) (MetricsMap, error) {
@@ -849,20 +863,38 @@ func addLoadBalancingRequestsAdaptive(z *lbResp, name string, account string) {
 }
 
 func fetchCustomHostnamesMetrics(metrics MetricsMap, zones []cfzones.Zone) {
-	if shouldSkip(metrics, zoneCustomHostnamesTotalMetricName) {
+	skipTotal := shouldSkip(metrics, zoneCustomHostnamesTotalMetricName)
+	skipQuota := shouldSkip(metrics, zoneCustomHostnamesQuotaAllocatedMetricName, zoneCustomHostnamesQuotaUsedMetricName)
+
+	if skipTotal && skipQuota {
 		return
 	}
 
 	for _, zone := range zones {
-		count, err := fetchCustomHostnamesCount(zone.ID)
-		if err != nil {
-			log.Errorf("failed to fetch custom hostnames for zone %s: %v", zone.Name, err)
-			continue
-		}
-
-		zoneCustomHostnamesTotal.With(prometheus.Labels{
+		labels := prometheus.Labels{
 			"zone":    zone.Name,
 			"account": zone.Account.Name,
-		}).Set(float64(count))
+		}
+
+		// Fetch count if needed
+		if !skipTotal {
+			count, err := fetchCustomHostnamesCount(zone.ID)
+			if err != nil {
+				log.Errorf("failed to fetch custom hostnames count for zone %s: %v", zone.Name, err)
+			} else {
+				zoneCustomHostnamesTotal.With(labels).Set(float64(count))
+			}
+		}
+
+		// Fetch quota if needed
+		if !skipQuota {
+			quota, err := fetchCustomHostnamesQuota(zone.ID)
+			if err != nil {
+				log.Errorf("failed to fetch custom hostnames quota for zone %s: %v", zone.Name, err)
+			} else {
+				zoneCustomHostnamesQuotaAllocated.With(labels).Set(float64(quota.Allocated))
+				zoneCustomHostnamesQuotaUsed.With(labels).Set(float64(quota.Used))
+			}
+		}
 	}
 }

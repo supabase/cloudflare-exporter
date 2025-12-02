@@ -12,6 +12,7 @@ import (
 
 	cf "github.com/cloudflare/cloudflare-go/v4"
 	cfaccounts "github.com/cloudflare/cloudflare-go/v4/accounts"
+	cfcustomhostnames "github.com/cloudflare/cloudflare-go/v4/custom_hostnames"
 	cfload_balancers "github.com/cloudflare/cloudflare-go/v4/load_balancers"
 	cfpagination "github.com/cloudflare/cloudflare-go/v4/packages/pagination"
 	cfrulesets "github.com/cloudflare/cloudflare-go/v4/rulesets"
@@ -988,52 +989,78 @@ func filterNonFreePlanZones(zones []cfzones.Zone) (filteredZones []cfzones.Zone)
 	return
 }
 
+type customHostnameQuota struct {
+	Allocated int `json:"allocated"`
+	Used      int `json:"used"`
+}
+
 func fetchCustomHostnamesCount(zoneID string) (int, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), cftimeout)
 	defer cancel()
 
-	// Use the REST API directly since the SDK might not have custom hostnames support
+	// Use the SDK to fetch custom hostnames count
 	// We only need the count, so we request 1 item per page
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
-		fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/custom_hostnames?per_page=1", zoneID), nil)
+	rep, err := cfclient.CustomHostnames.List(ctx, cfcustomhostnames.CustomHostnameListParams{
+		ZoneID:  cf.F(zoneID),
+		PerPage: cf.F(1.0),
+	})
 	if err != nil {
-		return 0, fmt.Errorf("failed to create request: %w", err)
+		return 0, fmt.Errorf("failed to fetch custom hostnames: %w", err)
 	}
 
-	// Copy headers from cfclient (API token)
-	req.Header.Set("Content-Type", "application/json")
-	// Get the API token from viper config
+	// Extract total_count from the result_info extra fields
+	totalCountRaw := rep.ResultInfo.JSON.ExtraFields["total_count"].Raw()
+
+	var totalCount int
+	if err := json.Unmarshal([]byte(totalCountRaw), &totalCount); err != nil {
+		return 0, fmt.Errorf("failed to parse total_count: %w", err)
+	}
+
+	return totalCount, nil
+}
+
+func fetchCustomHostnamesQuota(zoneID string) (*customHostnameQuota, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), cftimeout)
+	defer cancel()
+
+	// Use direct HTTP call since this is an undocumented endpoint not in the SDK
+	url := fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/custom_hostnames/quota", zoneID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Add authentication header
 	apiToken := viper.GetString("cf_api_token")
 	if apiToken != "" {
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", apiToken))
 	}
+	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return 0, fmt.Errorf("failed to execute request: %w", err)
+		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
 	defer resp.Body.Close()
 
-	var result struct {
-		Success    bool `json:"success"`
-		ResultInfo struct {
-			TotalCount int `json:"total_count"`
-		} `json:"result_info"`
-		Errors []struct {
+	var response struct {
+		Result  customHostnameQuota `json:"result"`
+		Success bool                `json:"success"`
+		Errors  []struct {
 			Message string `json:"message"`
 		} `json:"errors"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return 0, fmt.Errorf("failed to decode response: %w", err)
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	if !result.Success {
-		if len(result.Errors) > 0 {
-			return 0, fmt.Errorf("API error: %s", result.Errors[0].Message)
+	if !response.Success {
+		if len(response.Errors) > 0 {
+			return nil, fmt.Errorf("API error: %s", response.Errors[0].Message)
 		}
-		return 0, fmt.Errorf("API returned success=false")
+		return nil, fmt.Errorf("API returned success=false")
 	}
 
-	return result.ResultInfo.TotalCount, nil
+	return &response.Result, nil
 }
