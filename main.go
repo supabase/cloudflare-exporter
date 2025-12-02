@@ -115,9 +115,6 @@ func fetchMetrics(accounts []cfaccounts.Account, zones []cfzones.Zone, metrics M
 		zones = fetchZones(accounts)
 		ezones := getExcludedZones()
 		zones = filterExcludedZones(zones, ezones)
-		if !viper.GetBool("free_tier") {
-			zones = filterNonFreePlanZones(zones)
-		}
 	}
 
 	for zonesChunk := range slices.Chunk(zones, cfgraphqlreqlimit) {
@@ -259,10 +256,6 @@ func main() {
 	flags.Int("scrape_interval", 60, "scrape interval in seconds, defaults to 60")
 	viper.BindEnv("scrape_interval")
 	viper.SetDefault("scrape_interval", 60)
-
-	flags.Bool("free_tier", false, "scrape only metrics included in free plan")
-	viper.BindEnv("free_tier")
-	viper.SetDefault("free_tier", false)
 
 	flags.Duration("cf_timeout", 10*time.Second, "cloudflare request timeout, default 10 seconds")
 	viper.BindEnv("cf_timeout")
