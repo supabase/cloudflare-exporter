@@ -1,9 +1,7 @@
-name: Build and Publish Docker Images after push to master branch
+name: Build and Publish Docker Images
 
 on:
   workflow_dispatch:
-  push:
-    branches: [master]
 
 jobs:
   build-and-push-docker-image:
@@ -11,8 +9,9 @@ jobs:
       contents: read
       packages: write
       id-token: write
+      attestations: write
 
-    name: Build Docker image and push to repositories with tag latest
+    name: Build Docker image and push to repositories with version tag
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -25,27 +24,48 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-
-      - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6
+      - uses: actions/setup-go@v6
         with:
           go-version-file: "go.mod"
           cache: false
 
-
-      - uses: ko-build/setup-ko@d006021bd0c28d1ce33a07e7943d48b079944c8d # v0.9
+      - uses: ko-build/setup-ko@v# v0.9
         with:
           version: v0.18.0
+
       - name: Build and push
         id: publish-image
         env:
+          IMAGE_VERSION: ${{ github.ref_name }}
           KO_DOCKER_REPO: "ghcr.io/${{ github.repository }}"
         run: |
-          ko build . --sbom=none --bare --platform linux/arm64,linux/amd64 -t latest \
+          ko build . --sbom=none --image-refs ./image-digest --bare --platform linux/arm64,linux/amd64 -t ${IMAGE_VERSION} \
             --image-label org.opencontainers.image.title=cloudflare-exporter \
             --image-label org.opencontainers.image.description="Prometheus CloudFlare Exporter" \
             --image-label org.opencontainers.image.url=${{ github.server_url }}/${{ github.repository }} \
             --image-label org.opencontainers.image.revision=${{ github.sha }} \
             --image-label org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }} \
             --image-label org.opencontainers.image.licenses=Apache-2.0 \
-            --image-label org.opencontainers.image.version=latest \
+            --image-label org.opencontainers.image.version=${IMAGE_VERSION} \
             --image-label org.opencontainers.image.created="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+
+          # Extract image digest from ko output
+          # The file contains multiple lines (one per platform + manifest list at the end)
+          # We need only the last line (manifest list) for attestation
+          cat ./image-digest
+          IMAGE_REF=$(head -n 1 ./image-digest)
+          IMAGE_DIGEST=$(echo "$IMAGE_REF" | cut -d'@' -f2)
+
+          echo "Image reference: $IMAGE_REF"
+          echo "Image digest: $IMAGE_DIGEST"
+
+          echo "digest=$IMAGE_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "image-ref=$IMAGE_REF" >> "$GITHUB_OUTPUT"
+
+      - name: Attest
+        uses: actions/attest-build-provenance@v2
+        id: attest
+        with:
+          subject-name: ghcr.io/${{ github.repository }}
+          subject-digest: ${{ steps.publish-image.outputs.digest }}
+          push-to-registry: true
