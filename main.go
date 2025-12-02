@@ -119,13 +119,6 @@ func MetricsCtxFromContext(ctx context.Context) *metricsCtx {
 	return ctx.Value(metricsCtxKey).(*metricsCtx)
 }
 
-func SetCommonGQLVars(ctx context.Context, req *GraphQLRequest) {
-	metricsCtx := MetricsCtxFromContext(ctx)
-	req.Var("limit", gqlQueryLimit)
-	req.Var("startTime", metricsCtx.startTime)
-	req.Var("endTime", metricsCtx.endTime)
-}
-
 func fetchMetrics(ctx context.Context, accounts []cfaccounts.Account, zones []cfzones.Zone) {
 	var wg sync.WaitGroup
 

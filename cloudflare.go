@@ -321,6 +321,13 @@ type workerRequestResp struct {
 	} `json:"workersZoneInvocationsAdaptiveGroups"`
 }
 
+func SetCommonGQLVars(ctx context.Context, req *GraphQLRequest) {
+	metricsCtx := MetricsCtxFromContext(ctx)
+	req.Var("limit", gqlQueryLimit)
+	req.Var("startTime", metricsCtx.startTime)
+	req.Var("endTime", metricsCtx.endTime)
+}
+
 func fetchLoadblancerPools(ctx context.Context, account cfaccounts.Account) []cfload_balancers.Pool {
 	var cfPools []cfload_balancers.Pool
 	page := cfclient.LoadBalancers.Pools.ListAutoPaging(
