@@ -11,7 +11,6 @@ import (
 	cfaccounts "github.com/cloudflare/cloudflare-go/v4/accounts"
 	cfzones "github.com/cloudflare/cloudflare-go/v4/zones"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/spf13/viper"
 )
 
 type MetricName string
@@ -458,10 +457,6 @@ func fetchLogpushAnalyticsForAccount(metrics MetricsMap, account cfaccounts.Acco
 		return
 	}
 
-	if viper.GetBool("free_tier") {
-		return
-	}
-
 	r, err := fetchLogpushAccount(account.ID)
 
 	if err != nil {
@@ -512,9 +507,7 @@ func fetchLogpushAnalyticsForZone(metrics MetricsMap, zones []cfzones.Zone) {
 		return
 	}
 
-	if viper.GetBool("free_tier") {
-		return
-	}
+	zones = filterNonFreePlanZones(zones)
 
 	zoneIDs := extractZoneIDs(zones)
 	if len(zoneIDs) == 0 {
@@ -550,9 +543,7 @@ func fetchZoneColocationAnalytics(metrics MetricsMap, zones []cfzones.Zone) {
 	}
 
 	// Colocation metrics are not available in non-enterprise zones
-	if viper.GetBool("free_tier") {
-		return
-	}
+	zones = filterNonFreePlanZones(zones)
 
 	zoneIDs := extractZoneIDs(zones)
 	if len(zoneIDs) == 0 {
@@ -637,9 +628,7 @@ func fetchZoneAnalytics(metrics MetricsMap, zones []cfzones.Zone) {
 	}
 
 	// None of the below referenced metrics are available in the free tier
-	if viper.GetBool("free_tier") {
-		return
-	}
+	zones = filterNonFreePlanZones(zones)
 
 	zoneIDs := extractZoneIDs(zones)
 	if len(zoneIDs) == 0 {
@@ -820,9 +809,7 @@ func fetchLoadBalancerAnalytics(metrics MetricsMap, zones []cfzones.Zone) {
 		return
 	}
 	// None of the below referenced metrics are available in the free tier
-	if viper.GetBool("free_tier") {
-		return
-	}
+	zones = filterNonFreePlanZones(zones)
 
 	zoneIDs := extractZoneIDs(zones)
 	if len(zoneIDs) == 0 {

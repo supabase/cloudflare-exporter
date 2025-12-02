@@ -59,7 +59,6 @@ The exporter can be configured using env variables or command flags.
 | `CF_ZONES` |  (Optional) cloudflare zones to export, comma delimited list of zone ids. If not set, all zones from account are exported |
 | `CF_EXCLUDE_ZONES` |  (Optional) cloudflare zones to exclude, comma delimited list of zone ids. If not set, no zones from account are excluded |
 | `CF_TIMEOUT` | Set cloudflare request timeout. Default 10 seconds |
-| `FREE_TIER` | (Optional) scrape only metrics included in free plan. Accepts `true` or `false`, default `false`. |
 | `LISTEN` |  listen on addr:port (default `:8080`), omit addr to listen on all interfaces |
 | `METRICS_PATH` |  path for metrics, default `/metrics` |
 | `SCRAPE_DELAY` | scrape delay in seconds, default `300` |
@@ -78,7 +77,6 @@ Corresponding flags:
   -cf_zones="": cloudflare zones to export, comma delimited list
   -cf_exclude_zones="": cloudflare zones to exclude, comma delimited list
   -cf_timeout="10s": cloudflare request timeout, default 10 seconds
-  -free_tier=false: scrape only metrics included in free plan, default false
   -listen=":8080": listen on addr:port ( default :8080), omit addr to listen on all interfaces
   -metrics_path="/metrics": path for metrics, default /metrics
   -scrape_delay=300: scrape delay in seconds, defaults to 300
@@ -170,12 +168,6 @@ Configure zones and listening port:
 
 ```
 docker run --rm -p 8080:8081 -e CF_API_TOKEN=${CF_API_TOKEN} -e CF_ZONES=zoneid1,zoneid2,zoneid3 -e LISTEN=:8081 ghcr.io/lablabs/cloudflare_exporter
-```
-
-Disable non-free metrics:
-
-```
-docker run --rm -p 8080:8080 -e CF_API_TOKEN=${CF_API_TOKEN} -e FREE_TIER=true ghcr.io/lablabs/cloudflare_exporter
 ```
 
 Access help:
