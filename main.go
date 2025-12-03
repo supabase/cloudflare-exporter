@@ -224,7 +224,6 @@ func runExporter() {
 			case <-time.Tick(scrapeInterval):
 				startTime := endTime
 				endTime = time.Now().Truncate(scrapeInterval)
-				log.Info("startTime=", startTime, "endTime=", endTime)
 
 				shift := viper.GetDuration("scrape_delay")
 				go fetchMetrics(ContextWithMetricsCtx(ctx, startTime.Add(-shift), endTime.Add(-shift), enabledMetrics), accounts, zones)
