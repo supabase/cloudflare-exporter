@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 )
 
 const (
@@ -18,6 +19,7 @@ const (
 type GraphQL struct {
 	httpClient *http.Client
 	headers    http.Header
+	reqTimeout time.Duration
 }
 
 type GraphQLRequest struct {
@@ -40,10 +42,11 @@ func (e *GraphQLError) Error() string {
 
 var _ error = (*GraphQLError)(nil)
 
-func NewGraphQLClient(headers http.Header) *GraphQL {
+func NewGraphQLClient(headers http.Header, reqTimeout time.Duration) *GraphQL {
 	return &GraphQL{
 		httpClient: http.DefaultClient,
 		headers:    headers,
+		reqTimeout: reqTimeout,
 	}
 }
 
@@ -51,6 +54,9 @@ func (g *GraphQL) Run(ctx context.Context, gReq *GraphQLRequest, repStruct any) 
 	if err := context.Cause(ctx); err != nil {
 		return err
 	}
+
+	ctx, cancel := context.WithTimeout(ctx, g.reqTimeout)
+	defer cancel()
 
 	var body bytes.Buffer
 	if err := json.NewEncoder(&body).Encode(gReq); err != nil {
