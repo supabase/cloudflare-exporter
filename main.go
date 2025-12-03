@@ -123,6 +123,7 @@ func fetchMetrics(accounts []cfaccounts.Account, zones []cfzones.Zone, metrics M
 		wg.Go(func() { fetchZoneColocationAnalytics(metrics, zonesChunk) })
 		wg.Go(func() { fetchLoadBalancerAnalytics(metrics, zonesChunk) })
 		wg.Go(func() { fetchLogpushAnalyticsForZone(metrics, zonesChunk) })
+		wg.Go(func() { fetchCustomHostnamesMetrics(metrics, zonesChunk) })
 	}
 
 	wg.Wait()
