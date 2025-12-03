@@ -123,6 +123,7 @@ func fetchMetrics(ctx context.Context, accounts []cfaccounts.Account, zones []cf
 	var wg sync.WaitGroup
 
 	for _, a := range accounts {
+		wg.Go(func() { fetchWorkerDeployments(ctx, a) })
 		wg.Go(func() { fetchWorkerAnalytics(ctx, a) })
 		wg.Go(func() { fetchLogpushAnalyticsForAccount(ctx, a) })
 		wg.Go(func() { fetchR2StorageForAccount(ctx, a) })

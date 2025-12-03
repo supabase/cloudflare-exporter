@@ -51,6 +51,7 @@ const (
 	workerErrorsMetricName                       MetricName = "cloudflare_worker_errors_count"
 	workerCPUTimeMetricName                      MetricName = "cloudflare_worker_cpu_time"
 	workerDurationMetricName                     MetricName = "cloudflare_worker_duration"
+	workerDeploymentsMetricName                  MetricName = "cloudflare_worker_deployments"
 	poolHealthStatusMetricName                   MetricName = "cloudflare_zone_pool_health_status"
 	poolRequestsTotalMetricName                  MetricName = "cloudflare_zone_pool_requests_total"
 	poolOriginHealthStatusMetricName             MetricName = "cloudflare_pool_origin_health_status"
@@ -245,6 +246,12 @@ var (
 	}, []string{"script_name", "account", "status", "quantile"},
 	)
 
+	workerDeployments = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: workerDeploymentsMetricName.String(),
+		Help: "Deployment version percentages",
+	}, []string{"script_name", "account", "version"},
+	)
+
 	poolHealthStatus = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: poolHealthStatusMetricName.String(),
 		Help: "Reports the health of a pool, 1 for healthy, 0 for unhealthy.",
@@ -330,6 +337,7 @@ func init() {
 	metricsMap[workerErrorsMetricName] = workerErrors
 	metricsMap[workerCPUTimeMetricName] = workerCPUTime
 	metricsMap[workerDurationMetricName] = workerDuration
+	metricsMap[workerDeploymentsMetricName] = workerDeployments
 	metricsMap[poolHealthStatusMetricName] = poolHealthStatus
 	metricsMap[poolOriginHealthStatusMetricName] = poolOriginHealthStatus
 	metricsMap[poolRequestsTotalMetricName] = poolRequestsTotal
@@ -409,6 +417,26 @@ func fetchLoadblancerPoolsHealth(ctx context.Context, account cfaccounts.Account
 					"ip":          o.Address,
 				}).Set(float64(healthy))
 		}
+	}
+}
+
+func fetchWorkerDeployments(ctx context.Context, account cfaccounts.Account) {
+	if shouldSkip(ctx, workerDeploymentsMetricName) {
+		return
+	}
+
+	deployedVersions, err := getWorkerDeployments(ctx, account.ID)
+	if err != nil {
+		log.Errorf("failed to fetch worker deployments for account %q: %v", account.ID, err)
+		return
+	}
+
+	for _, version := range deployedVersions {
+		workerDeployments.With(prometheus.Labels{
+			"script_name": version.ID,
+			"account":     account.ID,
+			"version":     version.VersionID,
+		}).Set(version.Percentage)
 	}
 }
 
