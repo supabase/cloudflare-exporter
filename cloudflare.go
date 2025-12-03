@@ -783,7 +783,11 @@ func fetchZoneStatusAdaptive(ctx context.Context, zoneIDs []string) (*cloudflare
 				zoneTag
 				httpRequestsAdaptiveGroups(
 					limit: $limit
-					filter: { datetime_geq: $startTime, datetime_lt: $endTime }
+					filter: {
+						requestSource: "eyeball",
+						datetime_geq: $startTime,
+						datetime_lt: $endTime
+					}
 				) {
 					count
 					dimensions {
