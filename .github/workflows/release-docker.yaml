@@ -36,7 +36,7 @@ jobs:
       - name: Build and push
         id: publish-image
         env:
-          IMAGE_VERSION: ${{ github.ref_name }}
+          IMAGE_VERSION: latest
           KO_DOCKER_REPO: "ghcr.io/${{ github.repository }}"
         run: |
           ko build . --sbom=none --image-refs ./image-digest --bare --platform linux/arm64,linux/amd64 -t ${IMAGE_VERSION} \
