@@ -330,7 +330,7 @@ func SetCommonGQLVars(ctx context.Context, req *GraphQLRequest) {
 	req.Var("endTime", metricsCtx.endTime)
 }
 
-func fetchLoadblancerPools(ctx context.Context, account cfaccounts.Account) []cfload_balancers.Pool {
+func fetchLoadbalancerPools(ctx context.Context, account cfaccounts.Account) []cfload_balancers.Pool {
 	var cfPools []cfload_balancers.Pool
 	page := cfclient.LoadBalancers.Pools.ListAutoPaging(
 		ctx,
@@ -338,19 +338,19 @@ func fetchLoadblancerPools(ctx context.Context, account cfaccounts.Account) []cf
 			AccountID: cf.F(account.ID),
 		})
 	if page.Err() != nil {
-		log.Errorf("error fetching loadbalancer pools, err:%v", page.Err())
+		recordError("fetchLoadbalancerPools", fmt.Errorf("error fetching loadbalancer pools: %w", page.Err()))
 		return nil
 	}
 
 	seenIDs := make(map[string]struct{})
 	for page.Next() {
 		if page.Err() != nil {
-			log.Errorf("error during paging pools: %v", page.Err())
+			recordError("fetchLoadbalancerPools", fmt.Errorf("error during paging pools: %w", page.Err()))
 			break
 		}
 		pool := page.Current()
 		if _, exists := seenIDs[pool.ID]; exists {
-			log.Errorf("fetchLoadbalancerPools: duplicate pool ID detected (%s), breaking loop", pool.ID)
+			recordError("fetchLoadbalancerPools", fmt.Errorf("duplicate pool ID detected (%s), breaking loop", pool.ID))
 			break
 		}
 		seenIDs[pool.ID] = struct{}{}
@@ -375,12 +375,12 @@ func getAccountZoneList(ctx context.Context, accountID string) ([]cfzones.Zone, 
 	seenIDs := make(map[string]struct{})
 	for page.Next() {
 		if page.Err() != nil {
-			log.Errorf("error during paging zoneList: %v", page.Err())
+			recordError("getAccountZoneList", fmt.Errorf("error during paging zoneList: %w", page.Err()))
 			break
 		}
 		zone := page.Current()
 		if _, exists := seenIDs[zone.ID]; exists {
-			log.Errorf("getAccountZoneList: duplicate zone ID detected (%s), breaking loop", zone.ID)
+			recordError("getAccountZoneList", fmt.Errorf("duplicate zone ID detected (%s), breaking loop", zone.ID))
 			break
 		}
 		seenIDs[zone.ID] = struct{}{}
@@ -397,7 +397,7 @@ func fetchZones(ctx context.Context, accounts []cfaccounts.Account) []cfzones.Zo
 		z, err := getAccountZoneList(ctx, account.ID)
 
 		if err != nil {
-			log.Errorf("error fetching zones: %v", err)
+			recordError("getAccountZoneList", fmt.Errorf("error fetching zones for account %q: %w", account.ID, err))
 			continue
 		}
 		zones = append(zones, z...)
@@ -472,7 +472,7 @@ func fetchFirewallRules(ctx context.Context, zoneID string) map[string]string {
 			ZoneID: cf.F(zoneID),
 		})
 	if err != nil {
-		log.Errorf("error fetching firewall rules, ZoneID:%s, Err:%v", zoneID, err)
+		recordError("getFirewallRulesMapping", fmt.Errorf("error fetching firewall rules, ZoneID:%s: %w", zoneID, err))
 		return nil
 	}
 
@@ -484,7 +484,7 @@ func fetchFirewallRules(ctx context.Context, zoneID string) map[string]string {
 				ZoneID: cf.F(zoneID),
 			})
 			if err != nil {
-				log.Errorf("error fetching ruleset for managed firewall rules, ZoneID:%s, RulesetID:%s, Err:%v", zoneID, rulesetDesc.ID, err)
+				recordError("getFirewallRulesMapping", fmt.Errorf("error fetching ruleset for managed firewall rules, ZoneID:%s, RulesetID:%s: %w", zoneID, rulesetDesc.ID, err))
 				continue
 			}
 			for _, rule := range ruleset.Rules {
@@ -497,7 +497,7 @@ func fetchFirewallRules(ctx context.Context, zoneID string) map[string]string {
 				ZoneID: cf.F(zoneID),
 			})
 			if err != nil {
-				log.Errorf("error fetching ruleset for custom firewall rules, ZoneID:%s, RulesetID:%s, Err:%v", zoneID, rulesetDesc.ID, err)
+				recordError("getFirewallRulesMapping", fmt.Errorf("error fetching ruleset for custom firewall rules, ZoneID:%s, RulesetID:%s: %w", zoneID, rulesetDesc.ID, err))
 				continue
 			}
 			for _, rule := range ruleset.Rules {
@@ -517,19 +517,19 @@ func fetchAccounts(ctx context.Context) []cfaccounts.Account {
 			PerPage: cf.F(float64(apiPerPageLimit)),
 		})
 	if page.Err() != nil {
-		log.Errorf("error fetching accounts:%v", page.Err())
+		recordError("fetchAccounts", fmt.Errorf("error fetching accounts: %w", page.Err()))
 		return nil
 	}
 
 	seenIDs := make(map[string]struct{})
 	for page.Next() {
 		if page.Err() != nil {
-			log.Errorf("error during paging accounts: %v", page.Err())
+			recordError("fetchAccounts", fmt.Errorf("error during paging accounts: %w", page.Err()))
 			break
 		}
 		account := page.Current()
 		if _, exists := seenIDs[account.ID]; exists {
-			log.Errorf("fetchAccounts: duplicate account ID detected (%s), breaking loop", account.ID)
+			recordError("fetchAccounts", fmt.Errorf("duplicate account ID detected (%s), breaking loop", account.ID))
 			break
 		}
 		seenIDs[account.ID] = struct{}{}
@@ -642,7 +642,7 @@ query ($zoneIDs: [String!], $startTime: Time!, $endTime: Time!, $limit: Int!) {
 
 	var resp cloudflareResponse
 	if err := gql.Run(ctx, request, &resp); err != nil {
-		log.Errorf("failed to fetch zone totals, err:%v", err)
+		recordError("fetchZoneTotals", fmt.Errorf("failed to fetch zone totals: %w", err))
 		return nil, err
 	}
 
@@ -683,7 +683,7 @@ func fetchColoTotals(ctx context.Context, zoneIDs []string) (*cloudflareResponse
 
 	var resp cloudflareResponseColo
 	if err := gql.Run(ctx, request, &resp); err != nil {
-		log.Errorf("failed to fetch colocation totals, err:%v", err)
+		recordError("fetchColoTotals", fmt.Errorf("failed to fetch colocation totals: %w", err))
 		return nil, err
 	}
 
@@ -720,7 +720,6 @@ func fetchZoneWorkerRequestTotals(ctx context.Context, zoneIDs []string) (*cloud
 
 	var resp cloudflareResponseWorkerRequests
 	if err := gql.Run(ctx, request, &resp); err != nil {
-		log.Errorf("error fetching worker totals, err:%v", err)
 		return nil, err
 	}
 
@@ -768,7 +767,6 @@ func fetchWorkerTotals(ctx context.Context, accountID string) (*cloudflareRespon
 
 	var resp cloudflareResponseAccts
 	if err := gql.Run(ctx, request, &resp); err != nil {
-		log.Errorf("error fetching worker totals, err:%v", err)
 		return nil, err
 	}
 
@@ -804,7 +802,6 @@ func fetchZoneStatusAdaptive(ctx context.Context, zoneIDs []string) (*cloudflare
 
 	var resp cloudflareResponseStatusAdaptive
 	if err := gql.Run(ctx, request, &resp); err != nil {
-		log.Errorf("error fetching zone status adaptive groups, err:%v", err)
 		return nil, err
 	}
 	return &resp, nil
@@ -866,7 +863,6 @@ func fetchLoadBalancerTotals(ctx context.Context, zoneIDs []string) (*cloudflare
 
 	var resp cloudflareResponseLb
 	if err := gql.Run(ctx, request, &resp); err != nil {
-		log.Errorf("error fetching load balancer totals, err:%v", err)
 		return nil, err
 	}
 	return &resp, nil
@@ -902,7 +898,6 @@ func fetchLogpushAccount(ctx context.Context, accountID string) (*cloudflareResp
 
 	var resp cloudflareResponseLogpushAccount
 	if err := gql.Run(ctx, request, &resp); err != nil {
-		log.Errorf("error fetching logpush account totals, err:%v", err)
 		return nil, err
 	}
 	return &resp, nil
@@ -938,7 +933,6 @@ func fetchLogpushZone(ctx context.Context, zoneIDs []string) (*cloudflareRespons
 
 	var resp cloudflareResponseLogpushZone
 	if err := gql.Run(ctx, request, &resp); err != nil {
-		log.Errorf("error fetching logpush zone totals, err:%v", err)
 		return nil, err
 	}
 
@@ -984,7 +978,6 @@ func fetchR2Account(ctx context.Context, accountID string) (*cloudflareResponseR
 
 	var resp cloudflareResponseR2Account
 	if err := gql.Run(ctx, request, &resp); err != nil {
-		log.Errorf("error fetching R2 account: %v", err)
 		return nil, err
 	}
 	return &resp, nil
@@ -1016,7 +1009,7 @@ func filterNonFreePlanZones(zones []cfzones.Zone) (filteredZones []cfzones.Zone)
 	for _, z := range zones {
 		extraFields := map[string]any{}
 		if err := json.Unmarshal([]byte(z.JSON.ExtraFields["plan"].Raw()), &extraFields); err != nil {
-			log.Error(err)
+			recordError("filterNonFreePlanZones", fmt.Errorf("error unmarshaling zone plan for zone %q: %w", z.ID, err))
 			continue
 		}
 		if extraFields["id"] == freePlanID {
