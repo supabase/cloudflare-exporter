@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"runtime/debug"
 	"slices"
 	"strings"
 	"sync"
@@ -159,6 +160,20 @@ func runExporter() {
 		log.Info("Shutting down...")
 		cancel()
 	}()
+
+	var revision string
+	var modified string
+	if info, ok := debug.ReadBuildInfo(); ok {
+		for _, setting := range info.Settings {
+			switch setting.Key {
+			case "vcs.revision":
+				revision = setting.Value
+			case "vcs.modified":
+				modified = setting.Value
+			}
+		}
+	}
+	log.Info("Starting... GitSha:", revision, " Modified:", modified)
 
 	cfgMetricsPath := viper.GetString("metrics_path")
 

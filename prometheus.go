@@ -64,7 +64,18 @@ const (
 
 type MetricsMap map[MetricName]prometheus.Collector
 
+func recordError(action string, err error) {
+	exporterErrors.WithLabelValues(action).Inc()
+	log.Error(err)
+}
+
 var (
+	exporterErrors = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "cloudflare_exporter_errors",
+		Help: "Number of errors when attempting to pull metrics",
+	}, []string{"action"},
+	)
+
 	// Requests
 	zoneRequestTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: zoneRequestTotalMetricName.String(),
@@ -307,6 +318,9 @@ var (
 )
 
 func init() {
+	// Always register the exporter errors metric
+	prometheus.MustRegister(exporterErrors)
+
 	metricsMap[zoneRequestTotalMetricName] = zoneRequestTotal
 	metricsMap[zoneRequestCachedMetricName] = zoneRequestCached
 	metricsMap[zoneRequestSSLEncryptedMetricName] = zoneRequestSSLEncrypted
@@ -389,7 +403,7 @@ func fetchLoadblancerPoolsHealth(ctx context.Context, account cfaccounts.Account
 		return
 	}
 
-	pools := fetchLoadblancerPools(ctx, account)
+	pools := fetchLoadbalancerPools(ctx, account)
 	if pools == nil {
 		return
 	}
@@ -427,7 +441,7 @@ func fetchWorkerDeployments(ctx context.Context, account cfaccounts.Account) {
 
 	deployedVersions, err := getWorkerDeployments(ctx, account.ID)
 	if err != nil {
-		log.Errorf("failed to fetch worker deployments for account %q: %v", account.ID, err)
+		recordError("getWorkerDeployments", fmt.Errorf("failed to fetch worker deployments for account %q: %w", account.ID, err))
 		return
 	}
 
@@ -453,7 +467,7 @@ func fetchWorkerAnalytics(ctx context.Context, account cfaccounts.Account) {
 
 	r, err := fetchWorkerTotals(ctx, account.ID)
 	if err != nil {
-		log.Error("failed to fetch worker analytics for account ", account.ID, ": ", err)
+		recordError("fetchWorkerTotals", fmt.Errorf("failed to fetch worker analytics for account %q: %w", account.ID, err))
 		return
 	}
 
@@ -490,7 +504,7 @@ func fetchLogpushAnalyticsForAccount(ctx context.Context, account cfaccounts.Acc
 	r, err := fetchLogpushAccount(ctx, account.ID)
 
 	if err != nil {
-		log.Error("failed to fetch logpush analytics for account ", account.ID, ": ", err)
+		recordError("fetchLogpushAccount", fmt.Errorf("failed to fetch logpush analytics for account %q: %w", account.ID, err))
 		return
 	}
 
@@ -515,10 +529,11 @@ func fetchR2StorageForAccount(ctx context.Context, account cfaccounts.Account) {
 	}
 
 	r, err := fetchR2Account(ctx, account.ID)
-
 	if err != nil {
+		recordError("fetchR2Account", fmt.Errorf("failed to fetch R2 account %q: %w", account.ID, err))
 		return
 	}
+
 	for _, acc := range r.Viewer.Accounts {
 		var totalStorage uint64
 		for _, bucket := range acc.R2StorageGroups {
@@ -545,9 +560,8 @@ func fetchLogpushAnalyticsForZone(ctx context.Context, zones []cfzones.Zone) {
 	}
 
 	r, err := fetchLogpushZone(ctx, zoneIDs)
-
 	if err != nil {
-		log.Error("failed to fetch logpush analytics for zones: ", err)
+		recordError("fetchLogpushZone", fmt.Errorf("failed to fetch logpush analytics for zones %v: %w", zoneIDs, err))
 		return
 	}
 
@@ -582,7 +596,7 @@ func fetchZoneColocationAnalytics(ctx context.Context, zones []cfzones.Zone) {
 
 	r, err := fetchColoTotals(ctx, zoneIDs)
 	if err != nil {
-		log.Error("failed to fetch colocation analytics for zones: ", err)
+		recordError("fetchColoTotals", fmt.Errorf("failed to fetch colocation analytics for zones %v: %w", zoneIDs, err))
 		return
 	}
 	for _, z := range r.Viewer.Zones {
@@ -608,7 +622,7 @@ func fetchZoneWorkerAnalytics(ctx context.Context, zones []cfzones.Zone) {
 
 	r, err := fetchZoneWorkerRequestTotals(ctx, zoneIDs)
 	if err != nil {
-		log.Error("failed to fetch worker request analytics for zones: ", err)
+		recordError("fetchZoneWorkerRequestTotals", fmt.Errorf("failed to fetch worker request analytics for zones %v: %w", zoneIDs, err))
 		return
 	}
 	for _, z := range r.Viewer.Zones {
@@ -664,7 +678,7 @@ func fetchZoneAnalytics(ctx context.Context, zones []cfzones.Zone) {
 
 	r, err := fetchZoneTotals(ctx, zoneIDs)
 	if err != nil {
-		log.Error("failed to fetch zone analytics: ", err)
+		recordError("fetchZoneTotals", fmt.Errorf("failed to fetch zone analytics %v: %w", zoneIDs, err))
 		return
 	}
 
@@ -682,7 +696,7 @@ func fetchZoneAnalytics(ctx context.Context, zones []cfzones.Zone) {
 	if !shouldSkip(ctx, zoneRequestHTTPStatusV2MetricName) {
 		r2, err := fetchZoneStatusAdaptive(ctx, zoneIDs)
 		if err != nil {
-			log.Error("failed to fetch zone status adaptive analytics: ", err)
+			recordError("fetchZoneStatusAdaptive", fmt.Errorf("failed to fetch zone status adaptive analytics %v: %w", zoneIDs, err))
 		} else {
 			for _, z := range r2.Viewer.Zones {
 				name, account := findZoneAccountName(zones, z.ZoneTag)
@@ -845,7 +859,7 @@ func fetchLoadBalancerAnalytics(ctx context.Context, zones []cfzones.Zone) {
 
 	l, err := fetchLoadBalancerTotals(ctx, zoneIDs)
 	if err != nil {
-		log.Error("failed to fetch load balancer analytics: ", err)
+		recordError("fetchLoadBalancerTotals", fmt.Errorf("failed to fetch load balancer analytics for zones %v: %w", zoneIDs, err))
 		return
 	}
 	for _, lb := range l.Viewer.Zones {
