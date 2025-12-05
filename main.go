@@ -310,9 +310,9 @@ func main() {
 	viper.BindEnv("cf_exclude_zones")
 	viper.SetDefault("cf_exclude_zones", "")
 
-	flags.Duration("scrape_delay", 3*time.Minute, "shift the time window earlier by this amount, defaults to 3m")
+	flags.Duration("scrape_delay", 4*time.Minute, "shift the time window earlier by this amount, defaults to 4m")
 	viper.BindEnv("scrape_delay")
-	viper.SetDefault("scrape_delay", 3*time.Minute)
+	viper.SetDefault("scrape_delay", 4*time.Minute)
 
 	flags.Int("scrape_interval", 60, "scrape interval in seconds, defaults to 60")
 	viper.BindEnv("scrape_interval")
