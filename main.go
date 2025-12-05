@@ -219,6 +219,9 @@ func runExporter() {
 	scrapeInterval := time.Duration(viper.GetInt("scrape_interval")) * time.Second
 	log.Info("Scrape interval set to ", scrapeInterval)
 
+	scrapeDelay := viper.GetDuration("scrape_delay")
+	log.Info("Scrape delay set to ", scrapeDelay)
+
 	go func() {
 		accounts := fetchAccounts(ctx)
 
@@ -239,9 +242,7 @@ func runExporter() {
 			case <-time.Tick(scrapeInterval):
 				startTime := endTime
 				endTime = time.Now().Truncate(scrapeInterval)
-
-				shift := viper.GetDuration("scrape_delay")
-				go fetchMetrics(ContextWithMetricsCtx(ctx, startTime.Add(-shift), endTime.Add(-shift), enabledMetrics), accounts, zones)
+				go fetchMetrics(ContextWithMetricsCtx(ctx, startTime.Add(-scrapeDelay), endTime.Add(-scrapeDelay), enabledMetrics), accounts, zones)
 			}
 		}
 	}()
@@ -309,9 +310,9 @@ func main() {
 	viper.BindEnv("cf_exclude_zones")
 	viper.SetDefault("cf_exclude_zones", "")
 
-	flags.Duration("scrape_delay", 1*time.Minute, "shift the time window earlier by this amount, defaults to 1m")
+	flags.Duration("scrape_delay", 3*time.Minute, "shift the time window earlier by this amount, defaults to 3m")
 	viper.BindEnv("scrape_delay")
-	viper.SetDefault("scrape_delay", 1*time.Minute)
+	viper.SetDefault("scrape_delay", 3*time.Minute)
 
 	flags.Int("scrape_interval", 60, "scrape interval in seconds, defaults to 60")
 	viper.BindEnv("scrape_interval")
