@@ -3,7 +3,6 @@ module github.com/lablabs/cloudflare-exporter
 go 1.25
 
 require (
-	github.com/biter777/countries v1.7.4
 	github.com/cloudflare/cloudflare-go/v4 v4.1.0
 	github.com/nelkinda/health-go v0.0.1
 	github.com/prometheus/client_golang v1.19.0

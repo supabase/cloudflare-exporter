@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/biter777/countries"
 	cfaccounts "github.com/cloudflare/cloudflare-go/v4/accounts"
 	cfzones "github.com/cloudflare/cloudflare-go/v4/zones"
 	"github.com/prometheus/client_golang/prometheus"
@@ -104,7 +103,7 @@ var (
 	zoneRequestCountry = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: zoneRequestCountryMetricName.String(),
 		Help: "Number of request for zone per country",
-	}, []string{"zone", "account", "country", "region"},
+	}, []string{"zone", "account", "country"},
 	)
 
 	zoneRequestHTTPStatus = prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -164,7 +163,7 @@ var (
 	zoneBandwidthCountry = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: zoneBandwidthCountryMetricName.String(),
 		Help: "Bandwidth per country per zone",
-	}, []string{"zone", "account", "country", "region"},
+	}, []string{"zone", "account", "country"},
 	)
 
 	zoneThreatsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -176,7 +175,7 @@ var (
 	zoneThreatsCountry = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: zoneThreatsCountryMetricName.String(),
 		Help: "Threats per zone per country",
-	}, []string{"zone", "account", "country", "region"},
+	}, []string{"zone", "account", "country"},
 	)
 
 	zoneThreatsType = prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -732,10 +731,7 @@ func addHTTPGroups(z *zoneResp, name string, account string) {
 	}
 
 	for _, country := range zt.Sum.Country {
-		c := countries.ByName(country.ClientCountryName)
-		region := c.Info().Region.Info().Name
-
-		label := prometheus.Labels{"zone": name, "account": account, "country": country.ClientCountryName, "region": region}
+		label := prometheus.Labels{"zone": name, "account": account, "country": country.ClientCountryName}
 
 		zoneRequestCountry.With(label).Add(float64(country.Requests))
 		zoneBandwidthCountry.With(label).Add(float64(country.Bytes))
@@ -819,25 +815,23 @@ func addHealthCheckGroups(z *zoneResp, name string, account string) {
 
 func addHTTPAdaptiveGroups(z *zoneResp, name string, account string) {
 	for _, g := range z.HTTPRequestsAdaptiveGroups {
-		zoneRequestOriginStatusCountryHost.With(
-			prometheus.Labels{
-				"zone":    name,
-				"account": account,
-				"status":  strconv.Itoa(int(g.Dimensions.OriginResponseStatus)),
-				"country": g.Dimensions.ClientCountryName,
-				"host":    g.Dimensions.ClientRequestHTTPHost,
-			}).Add(float64(g.Count))
+		zoneRequestOriginStatusCountryHost.WithLabelValues(
+			/* zone */ name,
+			/* account */ account,
+			/* status */ strconv.Itoa(int(g.Dimensions.OriginResponseStatus)),
+			/* country */ g.Dimensions.ClientCountryName,
+			/* host */ g.Dimensions.ClientRequestHTTPHost,
+		).Add(float64(g.Count))
 	}
 
 	for _, g := range z.HTTPRequestsEdgeCountryHost {
-		zoneRequestStatusCountryHost.With(
-			prometheus.Labels{
-				"zone":    name,
-				"account": account,
-				"status":  strconv.Itoa(int(g.Dimensions.EdgeResponseStatus)),
-				"country": g.Dimensions.ClientCountryName,
-				"host":    g.Dimensions.ClientRequestHTTPHost,
-			}).Add(float64(g.Count))
+		zoneRequestStatusCountryHost.WithLabelValues(
+			/* zone */ name,
+			/* account */ account,
+			/* status */ strconv.Itoa(int(g.Dimensions.EdgeResponseStatus)),
+			/* country */ g.Dimensions.ClientCountryName,
+			/* host */ g.Dimensions.ClientRequestHTTPHost,
+		).Add(float64(g.Count))
 	}
 }
 
