@@ -149,6 +149,8 @@ func fetchMetrics(ctx context.Context, accounts []cfaccounts.Account, zones []cf
 	}
 
 	wg.Wait()
+
+	registeredMetrics.Report(trackedMetrics)
 }
 
 func runExporter() {
