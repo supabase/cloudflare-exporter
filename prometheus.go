@@ -61,7 +61,7 @@ const (
 	r2OperationMetricName                        MetricName = "cloudflare_r2_operation_count"
 )
 
-type MetricsMap map[MetricName]prometheus.Collector
+type MetricsMap map[MetricName]trackedMetric
 
 func recordError(action string, err error) {
 	exporterErrors.WithLabelValues(action).Inc()

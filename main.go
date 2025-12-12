@@ -215,7 +215,7 @@ func runExporter() {
 
 	log.Infof("Metrics set: %v", slices.Sorted(maps.Keys(enabledMetrics)))
 	for _, metric := range enabledMetrics {
-		prometheus.MustRegister(metric)
+		metric.MustRegisterWith(prometheus.DefaultRegisterer)
 	}
 
 	scrapeInterval := time.Duration(viper.GetInt("scrape_interval")) * time.Second
