@@ -218,7 +218,7 @@ func runExporter() {
 		metric.MustRegisterWith(prometheus.DefaultRegisterer)
 	}
 
-	scrapeInterval := time.Duration(viper.GetInt("scrape_interval")) * time.Second
+	scrapeInterval := viper.GetDuration("scrape_interval")
 	log.Info("Scrape interval set to ", scrapeInterval)
 
 	scrapeDelay := viper.GetDuration("scrape_delay")
@@ -316,13 +316,13 @@ func main() {
 	viper.BindEnv("scrape_delay")
 	viper.SetDefault("scrape_delay", 4*time.Minute)
 
-	flags.Int("scrape_interval", 60, "scrape interval in seconds, defaults to 60")
+	flags.Duration("scrape_interval", 1*time.Minute, "scrape interval, defaults to 1 minute")
 	viper.BindEnv("scrape_interval")
-	viper.SetDefault("scrape_interval", 60)
+	viper.SetDefault("scrape_interval", 1*time.Minute)
 
-	flags.Duration("cf_timeout", 10*time.Second, "cloudflare request timeout, default 10 seconds")
+	flags.Duration("cf_timeout", 20*time.Second, "cloudflare request timeout, default 20 seconds")
 	viper.BindEnv("cf_timeout")
-	viper.SetDefault("cf_timeout", 10*time.Second)
+	viper.SetDefault("cf_timeout", 20*time.Second)
 
 	flags.String("metrics_denylist", "", "metrics to not expose, comma delimited list")
 	viper.BindEnv("metrics_denylist")

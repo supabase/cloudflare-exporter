@@ -61,7 +61,7 @@ The exporter can be configured using env variables or command flags.
 | `CF_TIMEOUT` | Set cloudflare request timeout. Default 10 seconds |
 | `LISTEN` |  listen on addr:port (default `:8080`), omit addr to listen on all interfaces |
 | `METRICS_PATH` |  path for metrics, default `/metrics` |
-| `SCRAPE_INTERVAL` | scrape interval in seconds (will query cloudflare every SCRAPE_INTERVAL seconds), default `60` |
+| `SCRAPE_INTERVAL` | scrape interval (will query cloudflare every SCRAPE_INTERVAL), default `1m` |
 | `SCRAPE_DELAY` | shift the time window earlier by this amount, defaults to `1m` |
 | `METRICS_DENYLIST` | (Optional) cloudflare-exporter metrics to not export, comma delimited list of cloudflare-exporter metrics. If not set, all metrics are exported |
 | `ENABLE_PPROF` | (Optional) enable pprof profiling endpoints at `/debug/pprof/`. Accepts `true` or `false`, default `false`. **Warning**: Only enable in development/debugging environments |
@@ -76,10 +76,10 @@ Corresponding flags:
   -cf_api_token="": cloudflare api token (version 0.0.5+, preferred)
   -cf_zones="": cloudflare zones to export, comma delimited list
   -cf_exclude_zones="": cloudflare zones to exclude, comma delimited list
-  -cf_timeout="10s": cloudflare request timeout, default 10 seconds
+  -cf_timeout="20s": cloudflare request timeout, default 20 seconds
   -listen=":8080": listen on addr:port ( default :8080), omit addr to listen on all interfaces
   -metrics_path="/metrics": path for metrics, default /metrics
-  -scrape_interval=60: scrape interval in seconds, defaults to 60
+  -scrape_interval=1m: scrape interval, defaults to 1m
   -scrape_delay=1m: shift the time window earlier by this amount, defaults to 1m
   -metrics_denylist="": cloudflare-exporter metrics to not export, comma delimited list
   -enable_pprof=false: enable pprof profiling endpoints at /debug/pprof/
