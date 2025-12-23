@@ -20,45 +20,48 @@ func (mn MetricName) String() string {
 }
 
 const (
-	zoneRequestTotalMetricName                   MetricName = "cloudflare_zone_requests_total"
-	zoneRequestCachedMetricName                  MetricName = "cloudflare_zone_requests_cached"
-	zoneRequestSSLEncryptedMetricName            MetricName = "cloudflare_zone_requests_ssl_encrypted"
-	zoneRequestContentTypeMetricName             MetricName = "cloudflare_zone_requests_content_type"
-	zoneRequestCountryMetricName                 MetricName = "cloudflare_zone_requests_country"
-	zoneRequestHTTPStatusMetricName              MetricName = "cloudflare_zone_requests_status"
-	zoneRequestHTTPStatusV2MetricName            MetricName = "cloudflare_zone_requests_status_v2"
-	zoneRequestBrowserMapMetricName              MetricName = "cloudflare_zone_requests_browser_map_page_views_count"
-	zoneRequestOriginStatusCountryHostMetricName MetricName = "cloudflare_zone_requests_origin_status_country_host"
-	zoneRequestStatusCountryHostMetricName       MetricName = "cloudflare_zone_requests_status_country_host"
-	zoneBandwidthTotalMetricName                 MetricName = "cloudflare_zone_bandwidth_total"
-	zoneBandwidthCachedMetricName                MetricName = "cloudflare_zone_bandwidth_cached"
-	zoneBandwidthSSLEncryptedMetricName          MetricName = "cloudflare_zone_bandwidth_ssl_encrypted"
-	zoneBandwidthContentTypeMetricName           MetricName = "cloudflare_zone_bandwidth_content_type"
-	zoneBandwidthCountryMetricName               MetricName = "cloudflare_zone_bandwidth_country"
-	zoneThreatsTotalMetricName                   MetricName = "cloudflare_zone_threats_total"
-	zoneThreatsCountryMetricName                 MetricName = "cloudflare_zone_threats_country"
-	zoneThreatsTypeMetricName                    MetricName = "cloudflare_zone_threats_type"
-	zonePageviewsTotalMetricName                 MetricName = "cloudflare_zone_pageviews_total"
-	zoneUniquesTotalMetricName                   MetricName = "cloudflare_zone_uniques_total"
-	zoneColocationVisitsMetricName               MetricName = "cloudflare_zone_colocation_visits"
-	zoneColocationEdgeResponseBytesMetricName    MetricName = "cloudflare_zone_colocation_edge_response_bytes"
-	zoneColocationRequestsTotalMetricName        MetricName = "cloudflare_zone_colocation_requests_total"
-	zoneFirewallEventsCountMetricName            MetricName = "cloudflare_zone_firewall_events_count"
-	zoneHealthCheckEventsOriginCountMetricName   MetricName = "cloudflare_zone_health_check_events_origin_count"
-	zoneWorkerRequestHTTPStatusMetricName        MetricName = "cloudflare_zone_worker_requests_status"
-	workerRequestsMetricName                     MetricName = "cloudflare_worker_requests_count"
-	workerErrorsMetricName                       MetricName = "cloudflare_worker_errors_count"
-	workerCPUTimeMetricName                      MetricName = "cloudflare_worker_cpu_time"
-	workerDurationMetricName                     MetricName = "cloudflare_worker_duration"
-	workerDeploymentsMetricName                  MetricName = "cloudflare_worker_deployments"
-	poolHealthStatusMetricName                   MetricName = "cloudflare_zone_pool_health_status"
-	poolRequestsTotalMetricName                  MetricName = "cloudflare_zone_pool_requests_total"
-	poolOriginHealthStatusMetricName             MetricName = "cloudflare_pool_origin_health_status"
-	logpushFailedJobsAccountMetricName           MetricName = "cloudflare_logpush_failed_jobs_account_count"
-	logpushFailedJobsZoneMetricName              MetricName = "cloudflare_logpush_failed_jobs_zone_count"
-	r2StorageTotalMetricName                     MetricName = "cloudflare_r2_storage_total_bytes"
-	r2StorageMetricName                          MetricName = "cloudflare_r2_storage_bytes"
-	r2OperationMetricName                        MetricName = "cloudflare_r2_operation_count"
+	zoneRequestTotalMetricName                     MetricName = "cloudflare_zone_requests_total"
+	zoneRequestCachedMetricName                    MetricName = "cloudflare_zone_requests_cached"
+	zoneRequestSSLEncryptedMetricName              MetricName = "cloudflare_zone_requests_ssl_encrypted"
+	zoneRequestContentTypeMetricName               MetricName = "cloudflare_zone_requests_content_type"
+	zoneRequestCountryMetricName                   MetricName = "cloudflare_zone_requests_country"
+	zoneRequestHTTPStatusMetricName                MetricName = "cloudflare_zone_requests_status"
+	zoneRequestHTTPStatusV2MetricName              MetricName = "cloudflare_zone_requests_status_v2"
+	zoneRequestBrowserMapMetricName                MetricName = "cloudflare_zone_requests_browser_map_page_views_count"
+	zoneRequestOriginStatusCountryHostMetricName   MetricName = "cloudflare_zone_requests_origin_status_country_host"
+	zoneRequestStatusCountryHostMetricName         MetricName = "cloudflare_zone_requests_status_country_host"
+	zoneBandwidthTotalMetricName                   MetricName = "cloudflare_zone_bandwidth_total"
+	zoneBandwidthCachedMetricName                  MetricName = "cloudflare_zone_bandwidth_cached"
+	zoneBandwidthSSLEncryptedMetricName            MetricName = "cloudflare_zone_bandwidth_ssl_encrypted"
+	zoneBandwidthContentTypeMetricName             MetricName = "cloudflare_zone_bandwidth_content_type"
+	zoneBandwidthCountryMetricName                 MetricName = "cloudflare_zone_bandwidth_country"
+	zoneThreatsTotalMetricName                     MetricName = "cloudflare_zone_threats_total"
+	zoneThreatsCountryMetricName                   MetricName = "cloudflare_zone_threats_country"
+	zoneThreatsTypeMetricName                      MetricName = "cloudflare_zone_threats_type"
+	zonePageviewsTotalMetricName                   MetricName = "cloudflare_zone_pageviews_total"
+	zoneUniquesTotalMetricName                     MetricName = "cloudflare_zone_uniques_total"
+	zoneColocationVisitsMetricName                 MetricName = "cloudflare_zone_colocation_visits"
+	zoneColocationEdgeResponseBytesMetricName      MetricName = "cloudflare_zone_colocation_edge_response_bytes"
+	zoneColocationRequestsTotalMetricName          MetricName = "cloudflare_zone_colocation_requests_total"
+	zoneFirewallEventsCountMetricName              MetricName = "cloudflare_zone_firewall_events_count"
+	zoneHealthCheckEventsOriginCountMetricName     MetricName = "cloudflare_zone_health_check_events_origin_count"
+	zoneWorkerRequestHTTPStatusMetricName          MetricName = "cloudflare_zone_worker_requests_status"
+	workerRequestsMetricName                       MetricName = "cloudflare_worker_requests_count"
+	workerErrorsMetricName                         MetricName = "cloudflare_worker_errors_count"
+	workerCPUTimeMetricName                        MetricName = "cloudflare_worker_cpu_time"
+	workerDurationMetricName                       MetricName = "cloudflare_worker_duration"
+	workerDeploymentsMetricName                    MetricName = "cloudflare_worker_deployments"
+	poolHealthStatusMetricName                     MetricName = "cloudflare_zone_pool_health_status"
+	poolRequestsTotalMetricName                    MetricName = "cloudflare_zone_pool_requests_total"
+	poolOriginHealthStatusMetricName               MetricName = "cloudflare_pool_origin_health_status"
+	logpushFailedJobsAccountMetricName             MetricName = "cloudflare_logpush_failed_jobs_account_count"
+	logpushFailedJobsZoneMetricName                MetricName = "cloudflare_logpush_failed_jobs_zone_count"
+	r2StorageTotalMetricName                       MetricName = "cloudflare_r2_storage_total_bytes"
+	r2StorageMetricName                            MetricName = "cloudflare_r2_storage_bytes"
+	r2OperationMetricName                          MetricName = "cloudflare_r2_operation_count"
+	zoneCustomHostnamesTotalMetricName             MetricName = "cloudflare_zone_custom_hostnames_total"
+	accountCustomHostnamesQuotaAllocatedMetricName MetricName = "cloudflare_account_custom_hostnames_quota_allocated"
+	accountCustomHostnamesQuotaUsedMetricName      MetricName = "cloudflare_account_custom_hostnames_quota_used"
 )
 
 type MetricsMap map[MetricName]trackedMetric
@@ -405,6 +408,21 @@ var (
 		[]string{"account", "bucket", "operation"},
 	))
 
+	zoneCustomHostnamesTotal = NewTrackedGauge(prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: zoneCustomHostnamesTotalMetricName.String(),
+		Help: "Total number of custom hostnames configured for the zone",
+	}, []string{"zone", "account"}))
+
+	accountCustomHostnamesQuotaAllocated = NewTrackedGauge(prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: accountCustomHostnamesQuotaAllocatedMetricName.String(),
+		Help: "Allocated quota for custom hostnames for the account",
+	}, []string{"account"}))
+
+	accountCustomHostnamesQuotaUsed = NewTrackedGauge(prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: accountCustomHostnamesQuotaUsedMetricName.String(),
+		Help: "Used custom hostnames quota for the account",
+	}, []string{"account"}))
+
 	metricsMap = MetricsMap{}
 )
 
@@ -452,6 +470,9 @@ func init() {
 	metricsMap[r2StorageTotalMetricName] = r2StorageTotal
 	metricsMap[r2StorageMetricName] = r2Storage
 	metricsMap[r2OperationMetricName] = r2Operation
+	metricsMap[zoneCustomHostnamesTotalMetricName] = zoneCustomHostnamesTotal
+	metricsMap[accountCustomHostnamesQuotaAllocatedMetricName] = accountCustomHostnamesQuotaAllocated
+	metricsMap[accountCustomHostnamesQuotaUsedMetricName] = accountCustomHostnamesQuotaUsed
 }
 
 func buildDeniedMetricsSet(metricsDenylist []string) (MetricsMap, error) {
@@ -992,6 +1013,39 @@ func addLoadBalancingRequestsAdaptive(z *lbResp, name string, account string) {
 				g.LbName,   // load_balancer_name
 				p.PoolName, // pool_name
 			)
+		}
+	}
+}
+
+func fetchCustomHostnamesMetrics(ctx context.Context, zones []cfzones.Zone) {
+	skipTotal := shouldSkip(ctx, zoneCustomHostnamesTotalMetricName)
+	skipQuota := shouldSkip(ctx, accountCustomHostnamesQuotaAllocatedMetricName, accountCustomHostnamesQuotaUsedMetricName)
+
+	if skipTotal && skipQuota {
+		return
+	}
+
+	for _, zone := range zones {
+		// Fetch count if needed
+		if !skipTotal {
+			count, err := fetchCustomHostnamesCount(ctx, zone.ID)
+			if err != nil {
+				log.Errorf("failed to fetch custom hostnames count for zone %s: %v", zone.Name, err)
+			} else {
+				zoneCustomHostnamesTotal.Set(float64(count), zone.Name, zone.Account.Name)
+			}
+		}
+
+		// Fetch quota if needed
+		if !skipQuota {
+			// the endpoint requires zone ID but returns account level quota
+			quota, err := fetchCustomHostnamesQuota(ctx, zone.ID)
+			if err != nil {
+				log.Errorf("failed to fetch custom hostnames quota for zone %s: %v", zone.Name, err)
+			} else {
+				accountCustomHostnamesQuotaAllocated.Set(float64(quota.Allocated), zone.Account.Name)
+				accountCustomHostnamesQuotaUsed.Set(float64(quota.Used), zone.Account.Name)
+			}
 		}
 	}
 }
