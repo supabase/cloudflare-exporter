@@ -27,3 +27,5 @@ vendor/
 .idea/
 .env
 venom*
+
+.gograph/
