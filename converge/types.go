@@ -2,14 +2,67 @@ package converge
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"time"
 )
 
-// Observation is a single data point from an upstream source. The Key is a
-// pre-serialized Prometheus metric identity (e.g. metric_name{k="v"}) that
-// serves as both the tracker map key and the downstream wire format.
+// Label is a name/value pair attached to a metric series.
+type Label struct {
+	Name  string
+	Value string
+}
+
+// Key identifies a metric series: a metric name plus an ordered set of labels.
+// It carries structured data through the pipeline so producers (Fetcher) and
+// consumers (Sink) never need to serialize/parse a wire format.
+//
+// The engine needs a comparable map key, so Key caches a canonical string form
+// built on first call to String(). Two Keys with the same Name and Labels in
+// the same order produce the same string.
+type Key struct {
+	Name   string
+	Labels []Label
+	str    string // cached canonical form
+}
+
+// String returns the canonical Prometheus-style representation:
+// name{k1="v1",k2="v2"}. The result is cached for reuse as a map key.
+func (k *Key) String() string {
+	if k.str != "" {
+		return k.str
+	}
+	if len(k.Labels) == 0 {
+		k.str = k.Name
+		return k.str
+	}
+	var b strings.Builder
+	b.WriteString(k.Name)
+	b.WriteByte('{')
+	for i, l := range k.Labels {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		fmt.Fprintf(&b, `%s="%s"`, l.Name, l.Value)
+	}
+	b.WriteByte('}')
+	k.str = b.String()
+	return k.str
+}
+
+// NewKey creates a Key with the given name and label pairs. Labels are
+// provided as alternating name, value strings: NewKey("http_requests", "zone", "foo", "status", "200").
+func NewKey(name string, labelPairs ...string) Key {
+	var labels []Label
+	for i := 0; i+1 < len(labelPairs); i += 2 {
+		labels = append(labels, Label{Name: labelPairs[i], Value: labelPairs[i+1]})
+	}
+	return Key{Name: name, Labels: labels}
+}
+
+// Observation is a single data point from an upstream source.
 type Observation struct {
-	Key    string
+	Key    Key
 	Value  uint64
 	Bucket time.Time // source time bucket this observation belongs to
 }
@@ -17,7 +70,7 @@ type Observation struct {
 // Sample is a push-ready value. Produced by the engine when a tracker
 // determines a value is ready to sync.
 type Sample struct {
-	Key       string
+	Key       Key
 	Value     uint64
 	Timestamp time.Time
 }

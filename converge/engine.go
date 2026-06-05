@@ -73,14 +73,15 @@ func (e *Engine) Ingest(obs []Observation) []Sample {
 			e.windows[o.Bucket] = w
 		}
 
-		t := w.trackers[o.Key]
-		if t == nil {
-			t = newTracker(e.cfg.Threshold)
-			w.trackers[o.Key] = t
+		sk := o.Key.String()
+		te := w.trackers[sk]
+		if te == nil {
+			te = &trackerEntry{key: o.Key, tracker: newTracker(e.cfg.Threshold)}
+			w.trackers[sk] = te
 		}
 
-		t.observe(o.Value, o.Bucket)
-		if t.needsSyncAndConsume() {
+		te.tracker.observe(o.Value, o.Bucket)
+		if te.tracker.needsSyncAndConsume() {
 			ready = append(ready, Sample{
 				Key:       o.Key,
 				Value:     o.Value,

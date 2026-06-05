@@ -16,8 +16,8 @@ func cfg(threshold int) Config {
 	return c
 }
 
-func obs(key string, value uint64, bucket time.Time) Observation {
-	return Observation{Key: key, Value: value, Bucket: bucket}
+func obs(name string, value uint64, bucket time.Time) Observation {
+	return Observation{Key: NewKey(name), Value: value, Bucket: bucket}
 }
 
 func TestIngestStabilizes(t *testing.T) {
@@ -28,7 +28,7 @@ func TestIngestStabilizes(t *testing.T) {
 
 	samples := e.Ingest([]Observation{obs("req", 100, t0)})
 	require.Len(t, samples, 1)
-	assert.Equal(t, "req", samples[0].Key)
+	assert.Equal(t, "req", samples[0].Key.Name)
 	assert.Equal(t, uint64(100), samples[0].Value)
 	assert.Equal(t, t0, samples[0].Timestamp)
 }

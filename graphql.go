@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+
+	"github.com/lablabs/cloudflare-exporter/cfetch"
 )
 
 const (
@@ -102,4 +104,15 @@ func NewGraphQLRequest(query string) *GraphQLRequest {
 
 func (r *GraphQLRequest) Var(key string, val any) {
 	r.Vars[key] = val
+}
+
+// Thin adapter for the GQL client
+type gqlAdapter struct{ g *GraphQL }
+
+func (a *gqlAdapter) RunGQL(ctx context.Context, req *cfetch.GQLRequest, dest any) error {
+	r := NewGraphQLRequest(req.Query)
+	for k, v := range req.Variables {
+		r.Var(k, v)
+	}
+	return a.g.Run(ctx, r, dest)
 }

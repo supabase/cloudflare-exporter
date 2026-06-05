@@ -25,6 +25,7 @@ import (
 	cfaccounts "github.com/cloudflare/cloudflare-go/v4/accounts"
 	cfoption "github.com/cloudflare/cloudflare-go/v4/option"
 	cfzones "github.com/cloudflare/cloudflare-go/v4/zones"
+	"github.com/lablabs/cloudflare-exporter/converge"
 	"github.com/sirupsen/logrus"
 )
 
@@ -227,11 +228,21 @@ func runExporter() {
 
 	go func() {
 		accounts := fetchAccounts(ctx)
+		tzones := getTargetZones()
 
+		// --- Converge path: own zone setup, fetches by ID ---
+		var convergeZones []cfzones.Zone
+		if len(tzones) > 0 {
+			convergeZones = fetchZonesByID(ctx, tzones)
+		} else {
+			convergeZones = fetchZones(ctx, accounts)
+		}
+		runConverger(ctx, convergeZones, enabledMetrics, gql)
+
+		// --- Scrape path: original logic, unchanged from develop ---
 		// if the target zones argument is set, we only
 		// need to pull zone info once
 		var zones []cfzones.Zone
-		tzones := getTargetZones()
 		if len(tzones) > 0 {
 			zones = fetchZones(ctx, accounts)
 			zones = filterZones(zones, tzones)
@@ -333,13 +344,54 @@ func main() {
 	viper.BindEnv("metrics_allowlist")
 	viper.SetDefault("metrics_allowlist", "")
 
+	flags.String(argConvergeMetrics, "", "exclusive set of metrics to measure using converge, comma delimited list")
+	viper.BindEnv(argConvergeMetrics)
+	viper.SetDefault(argConvergeMetrics, "")
+
 	flags.String("log_level", "info", "log level")
 	viper.BindEnv("log_level")
 	viper.SetDefault("log_level", "info")
 
+	flags.String(argVMPushEndpoint, "", "URL endpoint for VictoriaMetrics Push")
+	viper.BindEnv(argVMPushEndpoint)
+	viper.SetDefault(argVMPushEndpoint, "")
+
 	flags.Bool("enable_pprof", false, "enable pprof profiling endpoints at /debug/pprof/")
 	viper.BindEnv("enable_pprof")
 	viper.SetDefault("enable_pprof", false)
+
+	defaults := converge.DefaultConfig()
+
+	flags.Int(argConvergeThreshold, defaults.Threshold,
+		"consecutive identical observations to stabilize")
+	viper.BindEnv(argConvergeThreshold)
+	viper.SetDefault(argConvergeThreshold, defaults.Threshold)
+
+	flags.Duration(argConvergeWindowTTL, defaults.WindowTTL,
+		"close window when bucket age exceeds this duration")
+	viper.BindEnv(argConvergeWindowTTL)
+	viper.SetDefault(argConvergeWindowTTL, defaults.WindowTTL)
+
+	flags.Duration(argConvergePollInterval, defaults.PollInterval, "tick interval for the live lane")
+	viper.BindEnv(argConvergePollInterval)
+	viper.SetDefault(argConvergePollInterval, defaults.PollInterval)
+
+	flags.Duration(argConvergeLookback, defaults.Lookback, "live lane query range")
+	viper.BindEnv(argConvergeLookback)
+	viper.SetDefault(argConvergeLookback, defaults.Lookback)
+
+	flags.Duration(argConvergeMaxBackfill, defaults.MaxBackfill, "max historical backfill on startup")
+	viper.BindEnv(argConvergeMaxBackfill)
+	viper.SetDefault(argConvergeMaxBackfill, defaults.MaxBackfill)
+
+	flags.Duration(argConvergeBackfillChunk, defaults.BackfillChunk, "time range per backfill fetch call")
+	viper.BindEnv(argConvergeBackfillChunk)
+	viper.SetDefault(argConvergeBackfillChunk, defaults.BackfillChunk)
+
+	flags.Int(argConvergeBackfillPerTick, defaults.BackfillCallsPerTick,
+		"max fetch calls for backfill per tick")
+	viper.BindEnv(argConvergeBackfillPerTick)
+	viper.SetDefault(argConvergeBackfillPerTick, defaults.BackfillCallsPerTick)
 
 	viper.BindPFlags(flags)
 
