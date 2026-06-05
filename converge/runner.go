@@ -62,6 +62,10 @@ func Run(ctx context.Context, cfg Config, f Fetcher, s Sink) error {
 			if backfillDone {
 				continue
 			}
+			if cfg.BackfillCallsPerTick <= 0 {
+				backfillDone = true
+				continue
+			}
 			limit := now.Add(-cfg.Lookback)
 			for i := 0; i < cfg.BackfillCallsPerTick; i++ {
 				if !backfillCursor.Before(limit) {
