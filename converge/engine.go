@@ -6,7 +6,7 @@ import "time"
 type Config struct {
 	// Stability: how the engine decides a value is ready to push.
 	Threshold int           // consecutive identical observations to stabilize (min: 1)
-	WindowTTL time.Duration // close window after this duration since creation
+	WindowTTL time.Duration // close window when bucket age exceeds this duration
 
 	// Polling: how the runner drives the engine.
 	PollInterval time.Duration // tick interval for the live lane
@@ -69,7 +69,7 @@ func (e *Engine) Ingest(obs []Observation) []Sample {
 	for _, o := range obs {
 		w := e.windows[o.Bucket]
 		if w == nil {
-			w = newWindow(o.Bucket, time.Now())
+			w = newWindow(o.Bucket)
 			e.windows[o.Bucket] = w
 		}
 
@@ -98,7 +98,7 @@ func (e *Engine) Ingest(obs []Observation) []Sample {
 func (e *Engine) Expire(now time.Time) []Sample {
 	var samples []Sample
 	for bucket, w := range e.windows {
-		if now.Sub(w.created) >= e.cfg.WindowTTL {
+		if now.Sub(w.bucket) >= e.cfg.WindowTTL {
 			if !w.pushed {
 				samples = append(samples, w.flush()...)
 			}

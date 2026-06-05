@@ -4,18 +4,18 @@ import "time"
 
 // window represents a single time bucket being observed. It owns one tracker
 // per unique series key and tracks whether any values have been pushed.
+// Window age is measured from the bucket timestamp, not from when the window
+// was first created in memory.
 type window struct {
 	bucket   time.Time
 	trackers map[string]*tracker
-	created  time.Time
 	pushed   bool // true after at least one sample has been emitted
 }
 
-func newWindow(bucket, created time.Time) *window {
+func newWindow(bucket time.Time) *window {
 	return &window{
 		bucket:   bucket,
 		trackers: make(map[string]*tracker),
-		created:  created,
 	}
 }
 
