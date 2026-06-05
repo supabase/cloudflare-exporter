@@ -18,7 +18,7 @@ type Config struct {
 	BackfillCallsPerTick int           // max Fetch calls for backfill per tick
 }
 
-// DefaultConfig returns a config tuned for eager push with reasonable defaults.
+// DefaultConfig returns a config tuned for convergence with reasonable defaults.
 func DefaultConfig() Config {
 	return Config{
 		Threshold:            3,
