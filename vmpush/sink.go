@@ -104,7 +104,8 @@ func (s *Sink) Push(ctx context.Context, samples []converge.Sample) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(resp.Body)
+		// protects against unbounded error body reading
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
 		return fmt.Errorf("vmpush: status %d: %s", resp.StatusCode, string(body))
 	}
 
