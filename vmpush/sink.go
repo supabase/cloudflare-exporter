@@ -27,7 +27,7 @@ type Sink struct {
 
 // Config holds the settings for creating a Sink.
 type Config struct {
-	Endpoint string // e.g. https://metrics-us-east-1.prod.supabase.tools/api/v1/write
+	Endpoint string
 	Username string
 	Password string
 }
@@ -76,7 +76,14 @@ func (s *Sink) Push(ctx context.Context, samples []converge.Sample) error {
 	if err != nil {
 		return fmt.Errorf("vmpush: marshal: %w", err)
 	}
-
+	// TODO:
+	//
+	// reduce allocations with buffer pools, the
+	// - protobuf
+	// - snappy encoding.
+	//
+	// protobuf: has MarshalTo which can write into an existing byte slice
+	// snappy.Encode: allows using the first argument for this
 	compressed := snappy.Encode(nil, data)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.endpoint, bytes.NewReader(compressed))
