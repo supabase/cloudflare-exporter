@@ -57,26 +57,34 @@ var cfetchSuffixes = map[MetricName]string{
 	zoneUniquesTotalMetricName:          "uniques_total",
 }
 
-// cfetchEnabledSet translates an enabled MetricsMap into the set of cfetch
-// metric suffixes. Returns nil (all enabled) when the full metricsMap is used.
+// cfetchEnabledSet builds the set of cfetch metric suffixes to emit.
+//
+// When metrics_converge_allowlist is set, only those metrics (intersected with
+// the main enabled set) are included. When unset, all suffixes whose canonical
+// MetricName appears in the main enabled set are included. Returns nil (emit
+// everything) when no filtering is needed.
 func cfetchEnabledSet(enabled MetricsMap) map[string]bool {
-	if len(enabled) == len(metricsMap) {
+	convergeList := getConvergeMetricsList()
+
+	// No converge allowlist and full main metrics set: no filtering needed.
+	if len(convergeList) == 0 && len(enabled) == len(metricsMap) {
 		return nil
 	}
 
-	cMetrics := make(map[string]string)
-
-	// copy over configured after looking up in static mapping
-	//
-	for _, k := range getConvergeMetricsList() {
-		if v, ok := cfetchSuffixes[MetricName(k)]; ok {
-			cMetrics[k] = v
+	// Determine which canonical names to consider.
+	candidates := cfetchSuffixes
+	if len(convergeList) > 0 {
+		candidates = make(map[MetricName]string, len(convergeList))
+		for _, k := range convergeList {
+			if suffix, ok := cfetchSuffixes[MetricName(k)]; ok {
+				candidates[MetricName(k)] = suffix
+			}
 		}
 	}
 
-	out := make(map[string]bool, len(cfetchSuffixes))
-	for name, suffix := range cMetrics {
-		if _, ok := enabled[MetricName(name)]; ok {
+	out := make(map[string]bool, len(candidates))
+	for name, suffix := range candidates {
+		if _, ok := enabled[name]; ok {
 			out[suffix] = true
 		}
 	}
