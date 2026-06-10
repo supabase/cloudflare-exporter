@@ -8,6 +8,7 @@ package cfetch
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	cfzones "github.com/cloudflare/cloudflare-go/v4/zones"
@@ -53,7 +54,7 @@ func (f *Fetcher) Fetch(ctx context.Context, start, end time.Time) ([]converge.O
 	var allObs []converge.Observation
 
 	l := converge.LoggerFromContext(ctx)
-	for chunk := range chunkZones(f.zones, maxZonesPerQuery) {
+	for chunk := range slices.Chunk(f.zones, maxZonesPerQuery) {
 		ids := zoneIDs(chunk)
 		resp, err := f.fetchRange(ctx, ids, start, end)
 		if err != nil {
@@ -263,20 +264,6 @@ func flattenHTTP1mGroups(z zoneData, zoneName string, enabled map[string]bool) [
 }
 
 // --- Helpers -----------------------------------------------------------------
-
-func chunkZones(zones []cfzones.Zone, size int) func(func([]cfzones.Zone) bool) {
-	return func(yield func([]cfzones.Zone) bool) {
-		for i := 0; i < len(zones); i += size {
-			end := i + size
-			if end > len(zones) {
-				end = len(zones)
-			}
-			if !yield(zones[i:end]) {
-				return
-			}
-		}
-	}
-}
 
 func zoneIDs(zones []cfzones.Zone) []string {
 	ids := make([]string, len(zones))
