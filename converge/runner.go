@@ -2,7 +2,6 @@ package converge
 
 import (
 	"context"
-	"log/slog"
 	"time"
 )
 
@@ -26,6 +25,7 @@ import (
 //	│           Engine.Flush ──► Sink.Push                 │
 //	└──────────────────────────────────────────────────────┘
 func Run(ctx context.Context, cfg Config, f Fetcher, s Sink) error {
+	log := LoggerFromContext(ctx)
 	eng := NewEngine(cfg)
 	ticker := time.NewTicker(cfg.PollInterval)
 	defer ticker.Stop()
@@ -41,7 +41,7 @@ func Run(ctx context.Context, cfg Config, f Fetcher, s Sink) error {
 				// Use a short-lived context for the final push.
 				pushCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				if err := s.Push(pushCtx, samples); err != nil {
-					slog.Error("flush push failed", "err", err)
+					log.WithError(err).Error("flush push failed")
 				}
 				cancel()
 			}
@@ -52,7 +52,7 @@ func Run(ctx context.Context, cfg Config, f Fetcher, s Sink) error {
 			liveStart := now.Add(-cfg.Lookback)
 			obs, err := f.Fetch(ctx, liveStart, now)
 			if err != nil {
-				slog.Error("live fetch failed", "err", err)
+				log.WithError(err).Error("live fetch failed")
 			} else {
 				pushSamples(ctx, s, eng.Ingest(obs))
 			}
@@ -70,7 +70,7 @@ func Run(ctx context.Context, cfg Config, f Fetcher, s Sink) error {
 			for i := 0; i < cfg.BackfillCallsPerTick; i++ {
 				if !backfillCursor.Before(limit) {
 					backfillDone = true
-					slog.Info("backfill complete")
+					log.Info("backfill complete")
 					break
 				}
 				end := backfillCursor.Add(cfg.BackfillChunk)
@@ -79,7 +79,8 @@ func Run(ctx context.Context, cfg Config, f Fetcher, s Sink) error {
 				}
 				obs, err := f.Fetch(ctx, backfillCursor, end)
 				if err != nil {
-					slog.Error("backfill fetch failed", "start", backfillCursor, "end", end, "err", err)
+					log.WithError(err).WithField("start", backfillCursor).WithField(
+						"end", end).Error("backfill fetch failed")
 					break // retry next tick
 				}
 				pushSamples(ctx, s, eng.Ingest(obs))
@@ -93,7 +94,8 @@ func pushSamples(ctx context.Context, s Sink, samples []Sample) {
 	if len(samples) == 0 {
 		return
 	}
+	log := LoggerFromContext(ctx)
 	if err := s.Push(ctx, samples); err != nil {
-		slog.Error("push failed", "count", len(samples), "err", err)
+		log.WithError(err).WithField("count", len(samples)).Error("push failed")
 	}
 }

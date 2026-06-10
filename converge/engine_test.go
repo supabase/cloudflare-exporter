@@ -16,8 +16,8 @@ func cfg(threshold int) Config {
 	return c
 }
 
-func obs(key string, value uint64, bucket time.Time) Observation {
-	return Observation{Key: key, Value: value, Bucket: bucket}
+func obs(name string, value uint64, bucket time.Time) Observation {
+	return Observation{Key: NewKey(name), Value: value, Bucket: bucket}
 }
 
 func TestIngestStabilizes(t *testing.T) {
@@ -28,7 +28,7 @@ func TestIngestStabilizes(t *testing.T) {
 
 	samples := e.Ingest([]Observation{obs("req", 100, t0)})
 	require.Len(t, samples, 1)
-	assert.Equal(t, "req", samples[0].Key)
+	assert.Equal(t, "req", samples[0].Key.Name)
 	assert.Equal(t, uint64(100), samples[0].Value)
 	assert.Equal(t, t0, samples[0].Timestamp)
 }
@@ -88,12 +88,12 @@ func TestExpireTTL(t *testing.T) {
 	e.Ingest([]Observation{obs("req", 100, t0)})
 	assert.Equal(t, 1, e.Stats().OpenWindows)
 
-	// Not yet expired.
-	assert.Empty(t, e.Expire(time.Now().Add(4*time.Minute)))
+	// Not yet expired (bucket + 4m < bucket + TTL).
+	assert.Empty(t, e.Expire(t0.Add(4*time.Minute)))
 	assert.Equal(t, 1, e.Stats().OpenWindows)
 
-	// TTL exceeded: force push and close.
-	samples := e.Expire(time.Now().Add(6 * time.Minute))
+	// TTL exceeded (bucket + 6m > bucket + 5m TTL).
+	samples := e.Expire(t0.Add(6 * time.Minute))
 	require.Len(t, samples, 1)
 	assert.Equal(t, uint64(100), samples[0].Value)
 	assert.Equal(t, 0, e.Stats().OpenWindows)
@@ -109,7 +109,7 @@ func TestExpireTTLNoPushIfAlreadyPushed(t *testing.T) {
 	require.Len(t, samples, 1)
 
 	// TTL expires: window was already pushed, no duplicate.
-	expired := e.Expire(time.Now().Add(6 * time.Minute))
+	expired := e.Expire(t0.Add(6 * time.Minute))
 	assert.Empty(t, expired)
 	assert.Equal(t, 0, e.Stats().OpenWindows)
 }
@@ -123,11 +123,11 @@ func TestExpireTTLCleansPushedWindows(t *testing.T) {
 	e.Ingest([]Observation{obs("req", 100, t0)})
 
 	// Window stays open before TTL, accepting further observations.
-	e.Expire(time.Now().Add(3 * time.Minute))
+	e.Expire(t0.Add(3 * time.Minute))
 	assert.Equal(t, 1, e.Stats().OpenWindows)
 
 	// TTL exceeded: window removed, no duplicate push.
-	expired := e.Expire(time.Now().Add(6 * time.Minute))
+	expired := e.Expire(t0.Add(6 * time.Minute))
 	assert.Empty(t, expired)
 	assert.Equal(t, 0, e.Stats().OpenWindows)
 }

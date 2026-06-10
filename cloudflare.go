@@ -394,6 +394,21 @@ func getAccountZoneList(ctx context.Context, accountID string) ([]cfzones.Zone, 
 	return zoneList, nil
 }
 
+// fetchZonesByID fetches zone details directly by ID, bypassing the account
+// listing. Use this when zone IDs are provided on the command line.
+func fetchZonesByID(ctx context.Context, ids []string) []cfzones.Zone {
+	var zones []cfzones.Zone
+	for _, id := range ids {
+		z, err := cfclient.Zones.Get(ctx, cfzones.ZoneGetParams{ZoneID: cf.F(id)})
+		if err != nil {
+			recordError("fetchZoneByID", fmt.Errorf("error fetching zone %q: %w", id, err))
+			continue
+		}
+		zones = append(zones, *z)
+	}
+	return zones
+}
+
 func fetchZones(ctx context.Context, accounts []cfaccounts.Account) []cfzones.Zone {
 	var zones []cfzones.Zone
 
