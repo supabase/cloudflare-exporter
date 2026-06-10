@@ -103,24 +103,31 @@ func convergeConfig() converge.Config {
 	return cfg
 }
 
-func runConverger(ctx context.Context, convergeZones []cfzones.Zone, metrics MetricsMap, gql *GraphQL,
-) {
-	vmCfg := vmpush.Config{
+// setupConverger validates the sink and returns a closure that runs the
+// converge loop. The caller decides whether to run it in a goroutine.
+func setupConverger(ctx context.Context, convergeZones []cfzones.Zone, metrics MetricsMap, gql *GraphQL,
+) (func(context.Context) error, error) {
+	sink := vmpush.New(vmpush.Config{
 		Endpoint: viper.GetString(argVMPushEndpoint),
 		Username: viper.GetString(argVMPushUser),
 		Password: viper.GetString(argVMPushPasswd),
+	})
+
+	if err := sink.Ping(ctx); err != nil {
+		return nil, err
 	}
 
-	go converge.Run(
-		converge.ContextWithLogger(ctx,
-			log.WithField("component", "converge"),
-		),
-		convergeConfig(),
-		cfetch.New(
-			&gqlAdapter{gql},
-			filterExcludedZones(convergeZones, getExcludedZones()),
-			cfetchEnabledSet(metrics),
-		),
-		vmpush.New(vmCfg),
+	cfg := convergeConfig()
+	fetcher := cfetch.New(
+		&gqlAdapter{gql},
+		filterExcludedZones(convergeZones, getExcludedZones()),
+		cfetchEnabledSet(metrics),
 	)
+
+	return func(ctx context.Context) error {
+		return converge.Run(
+			converge.ContextWithLogger(ctx, log.WithField("component", "converge")),
+			cfg, fetcher, sink,
+		)
+	}, nil
 }

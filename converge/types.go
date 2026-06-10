@@ -87,6 +87,12 @@ type Sink interface {
 	Push(ctx context.Context, samples []Sample) error
 }
 
+// Pinger is an optional interface a Sink can implement to support pre-flight
+// validation. Run checks for this before entering the main loop.
+type Pinger interface {
+	Ping(ctx context.Context) error
+}
+
 // Stats provides a snapshot of engine state for monitoring.
 type Stats struct {
 	OpenWindows  int

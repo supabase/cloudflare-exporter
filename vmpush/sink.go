@@ -49,6 +49,38 @@ func New(cfg Config) *Sink {
 	}
 }
 
+// Ping checks that the endpoint is reachable and credentials are not rejected.
+// It issues a GET against the write endpoint. This confirms network
+// connectivity and catches auth failures, but does not validate that the
+// write path itself will accept data.
+func (s *Sink) Ping(ctx context.Context) error {
+	if s.endpoint == "" {
+		return fmt.Errorf("vmpush: endpoint not configured")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.endpoint, nil)
+	if err != nil {
+		return fmt.Errorf("vmpush: ping: %w", err)
+	}
+	if len(s.username) > 0 || len(s.password) > 0 {
+		req.SetBasicAuth(s.username, s.password)
+	}
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("vmpush: ping: %w", err)
+	}
+	resp.Body.Close()
+
+	switch resp.StatusCode {
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return fmt.Errorf("vmpush: ping: authentication failed (status %d)", resp.StatusCode)
+	case http.StatusNotFound:
+		return fmt.Errorf("vmpush: ping: endpoint not found (status %d)", resp.StatusCode)
+	}
+
+	return nil
+}
+
 // Push sends samples to VictoriaMetrics using Prometheus remote write.
 func (s *Sink) Push(ctx context.Context, samples []converge.Sample) error {
 	if len(samples) == 0 {

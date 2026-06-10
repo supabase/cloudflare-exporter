@@ -237,7 +237,11 @@ func runExporter() {
 		} else {
 			convergeZones = fetchZones(ctx, accounts)
 		}
-		runConverger(ctx, convergeZones, enabledMetrics, gql)
+		converger, err := setupConverger(ctx, convergeZones, enabledMetrics, gql)
+		if err != nil {
+			log.WithError(err).Fatal("converge setup failed")
+		}
+		go converger(ctx)
 
 		// --- Scrape path: original logic, unchanged from develop ---
 		// if the target zones argument is set, we only
@@ -344,21 +348,21 @@ func main() {
 	viper.BindEnv("metrics_allowlist")
 	viper.SetDefault("metrics_allowlist", "")
 
-	flags.String(argConvergeMetrics, "", "exclusive set of metrics to measure using converge, comma delimited list")
-	viper.BindEnv(argConvergeMetrics)
-	viper.SetDefault(argConvergeMetrics, "")
-
 	flags.String("log_level", "info", "log level")
 	viper.BindEnv("log_level")
 	viper.SetDefault("log_level", "info")
 
-	flags.String(argVMPushEndpoint, "", "URL endpoint for VictoriaMetrics Push")
-	viper.BindEnv(argVMPushEndpoint)
-	viper.SetDefault(argVMPushEndpoint, "")
-
 	flags.Bool("enable_pprof", false, "enable pprof profiling endpoints at /debug/pprof/")
 	viper.BindEnv("enable_pprof")
 	viper.SetDefault("enable_pprof", false)
+
+	flags.String(argConvergeMetrics, "", "exclusive set of metrics to measure using converge, comma delimited list")
+	viper.BindEnv(argConvergeMetrics)
+	viper.SetDefault(argConvergeMetrics, "")
+
+	flags.String(argVMPushEndpoint, "", "URL endpoint for VictoriaMetrics Push")
+	viper.BindEnv(argVMPushEndpoint)
+	viper.SetDefault(argVMPushEndpoint, "")
 
 	defaults := converge.DefaultConfig()
 
