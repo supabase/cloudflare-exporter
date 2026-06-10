@@ -260,7 +260,8 @@ func runExporter() {
 			case <-time.Tick(scrapeInterval):
 				startTime := endTime
 				endTime = time.Now().Truncate(scrapeInterval)
-				go fetchMetrics(ContextWithMetricsCtx(ctx, startTime.Add(-scrapeDelay), endTime.Add(-scrapeDelay), enabledMetrics), accounts, zones)
+				go fetchMetrics(ContextWithMetricsCtx(ctx,
+					startTime.Add(-scrapeDelay), endTime.Add(-scrapeDelay), enabledMetrics), accounts, zones)
 			}
 		}
 	}()
@@ -431,7 +432,8 @@ func main() {
 			cfoption.WithRequestTimeout(cfTimeout),
 		)
 		headers.Set("Authorization", "Bearer "+viper.GetString("cf_api_token"))
-	} else if len(viper.GetString("cf_api_email")) > 0 && len(viper.GetString("cf_api_key")) > 0 {
+	} else if len(viper.GetString("cf_api_email")) > 0 &&
+		len(viper.GetString("cf_api_key")) > 0 {
 		cfclient = cf.NewClient(
 			cfoption.WithAPIKey(viper.GetString("cf_api_key")),
 			cfoption.WithAPIEmail(viper.GetString("cf_api_email")),
