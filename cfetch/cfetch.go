@@ -59,6 +59,8 @@ func (f *Fetcher) Fetch(ctx context.Context, start, end time.Time) ([]converge.O
 		if err != nil {
 			l.WithError(err).Warn("cfetch: skipping chunk")
 			continue
+		}
+
 		for _, z := range resp.Viewer.Zones {
 			name := findZoneName(chunk, z.ZoneTag)
 			allObs = append(allObs, flattenHTTP1mGroups(z, name, f.enabled)...)

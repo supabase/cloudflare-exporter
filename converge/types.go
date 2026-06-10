@@ -39,11 +39,12 @@ func (k *Key) String() string {
 	var b strings.Builder
 	b.WriteString(k.Name)
 	b.WriteByte('{')
+	repl := strings.NewReplacer("\\", "\\\\", "\n", "\\n", "\"", "\\\"")
 	for i, l := range k.Labels {
 		if i > 0 {
 			b.WriteByte(',')
 		}
-		fmt.Fprintf(&b, `%s="%s"`, l.Name, l.Value)
+		fmt.Fprintf(&b, `%s="%s"`, l.Name, repl.Replace(l.Value))
 	}
 	b.WriteByte('}')
 	k.str = b.String()
