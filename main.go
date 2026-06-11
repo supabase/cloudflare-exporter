@@ -239,9 +239,10 @@ func runExporter() {
 		}
 		converger, err := setupConverger(ctx, convergeZones, enabledMetrics, gql)
 		if err != nil {
-			log.WithError(err).Fatal("converge setup failed")
+			log.WithError(err).Error("converge setup failed, skipping")
+		} else {
+			go converger(ctx)
 		}
-		go converger(ctx)
 
 		// --- Scrape path: original logic, unchanged from develop ---
 		// if the target zones argument is set, we only
