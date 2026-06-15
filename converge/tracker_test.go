@@ -13,11 +13,11 @@ var tt0 = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 func TestTrackerStabilizes(t *testing.T) {
 	tr := newTracker(3)
 
-	tr.observe(100, tt0)
-	tr.observe(100, tt0)
+	assert.Equal(t, obsConverging, tr.observe(100, tt0))
+	assert.Equal(t, obsNOOP, tr.observe(100, tt0))
 	assert.False(t, tr.stable())
 
-	tr.observe(100, tt0)
+	assert.Equal(t, obsNOOP, tr.observe(100, tt0))
 	assert.True(t, tr.stable())
 	assert.True(t, tr.needsSyncAndConsume())
 
@@ -43,7 +43,7 @@ func TestTrackerDriftThenRestabilize(t *testing.T) {
 	tr.observe(10, tt0)
 	tr.needsSyncAndConsume()
 
-	tr.observe(20, tt0) // drift
+	assert.Equal(t, obsRewrite, tr.observe(20, tt0))
 	assert.False(t, tr.stable())
 
 	tr.observe(20, tt0) // re-stabilize
@@ -61,7 +61,7 @@ func TestTrackerRestabilizeSameValueNoSync(t *testing.T) {
 	tr.observe(10, tt0)
 	tr.needsSyncAndConsume() // synced at 10
 
-	tr.observe(20, tt0) // drift
+	assert.Equal(t, obsRewrite, tr.observe(20, tt0))
 	tr.observe(10, tt0) // back to 10
 	tr.observe(10, tt0) // re-stabilize at 10, same as last synced
 
@@ -71,7 +71,7 @@ func TestTrackerRestabilizeSameValueNoSync(t *testing.T) {
 func TestTrackerThresholdOne(t *testing.T) {
 	tr := newTracker(1)
 
-	tr.observe(42, tt0)
+	assert.Equal(t, obsConverging, tr.observe(42, tt0))
 	assert.True(t, tr.stable())
 	assert.True(t, tr.needsSyncAndConsume())
 }
@@ -107,7 +107,7 @@ func TestTrackerValueDuringDrift(t *testing.T) {
 	tr.observe(10, tt0)
 	tr.needsSyncAndConsume()
 
-	tr.observe(20, tt0) // drift
+	assert.Equal(t, obsRewrite, tr.observe(20, tt0))
 	assert.False(t, tr.stable())
 
 	v, ok := tr.value()
@@ -134,7 +134,7 @@ func TestTrackerCurrentValueBeforeObservation(t *testing.T) {
 func TestTrackerCurrentValueUnstable(t *testing.T) {
 	tr := newTracker(3)
 
-	tr.observe(100, tt0)
+	assert.Equal(t, obsConverging, tr.observe(100, tt0))
 	// Not stable, value() returns nothing.
 	_, ok := tr.value()
 	assert.False(t, ok)
@@ -166,7 +166,7 @@ func TestTrackerUnconsumedSyncNewStabilization(t *testing.T) {
 	tr.observe(10, tt0) // stable at 10, needsSync set
 
 	// Don't consume. Drift and re-stabilize at new value.
-	tr.observe(20, tt0)
+	assert.Equal(t, obsRewrite, tr.observe(20, tt0))
 	tr.observe(20, tt0) // stable at 20, needsSync still true
 
 	assert.True(t, tr.needsSyncAndConsume())
@@ -177,4 +177,15 @@ func TestTrackerUnconsumedSyncNewStabilization(t *testing.T) {
 
 	// Consuming recorded lastSynced = 20.
 	assert.False(t, tr.needsSyncAndConsume())
+}
+
+func TestTrackerObserveOutcomeRewriteAfterExtendedStability(t *testing.T) {
+	// Verifies observedRewrite fires even when runLen > threshold (not just ==).
+	tr := newTracker(2)
+
+	tr.observe(10, tt0)
+	tr.observe(10, tt0) // runLen=2, stable
+	tr.observe(10, tt0) // runLen=3, still stable (past threshold)
+
+	assert.Equal(t, obsRewrite, tr.observe(20, tt0))
 }

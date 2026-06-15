@@ -35,6 +35,11 @@ func DefaultConfig() Config {
 // windows and emits Samples when values stabilize. It performs no I/O, spawns
 // no goroutines, and holds no timers. A Runner drives it.
 //
+// Stabilized gauge values are routed through per-series counterChains that
+// produce cumulative prefix sums. When an earlier bucket re-converges, the
+// delta cascades forward and the engine re-emits corrected counter values for
+// all affected later buckets.
+//
 //	caller                          engine
 //	  │                               │
 //	  │── Ingest(observations) ──────►│
@@ -46,8 +51,11 @@ func DefaultConfig() Config {
 //	  │── Flush() ───────────────────►│
 //	  │◄── []Sample (all values) ─────│
 type Engine struct {
-	cfg     Config
-	windows map[time.Time]*window
+	cfg                 Config
+	windows             map[time.Time]*window
+	chains              map[string]*counterChain // per-key counter accumulation
+	expireCount         uint64
+	postStabilizeUpdate uint64
 }
 
 // NewEngine creates an engine with the given configuration.
@@ -58,12 +66,13 @@ func NewEngine(cfg Config) *Engine {
 	return &Engine{
 		cfg:     cfg,
 		windows: make(map[time.Time]*window),
+		chains:  make(map[string]*counterChain),
 	}
 }
 
 // Ingest feeds observations into the engine and returns any samples that
 // became push-ready as a result (trackers that crossed the stability
-// threshold).
+// threshold). Returned sample values are cumulative counters.
 func (e *Engine) Ingest(obs []Observation) []Sample {
 	var ready []Sample
 	for _, o := range obs {
@@ -80,13 +89,11 @@ func (e *Engine) Ingest(obs []Observation) []Sample {
 			w.trackers[sk] = te
 		}
 
-		te.tracker.observe(o.Value, o.Bucket)
+		if te.tracker.observe(o.Value, o.Bucket) == obsRewrite {
+			e.postStabilizeUpdate++
+		}
 		if te.tracker.needsSyncAndConsume() {
-			ready = append(ready, Sample{
-				Key:       o.Key,
-				Value:     o.Value,
-				Timestamp: o.Bucket,
-			})
+			ready = append(ready, e.emit(o.Key, o.Value, o.Bucket)...)
 			te.pushed = true
 		}
 	}
@@ -94,25 +101,44 @@ func (e *Engine) Ingest(obs []Observation) []Sample {
 }
 
 // Expire checks all open windows against WindowTTL. Windows past their TTL
-// are force-flushed (best known values pushed if not already pushed) and
-// removed.
+// have ALL trackers' latest values fed to the counter chains before eviction,
+// capturing any post-stabilization drift. The bucket is then evicted from
+// each chain, folding its gauge into the chain's base.
 func (e *Engine) Expire(now time.Time) []Sample {
 	var samples []Sample
 	for bucket, w := range e.windows {
-		if now.Sub(w.bucket) >= e.cfg.WindowTTL {
-			samples = append(samples, w.flushUnpushed()...)
-			delete(e.windows, bucket)
+		if now.Sub(w.bucket) < e.cfg.WindowTTL {
+			continue
 		}
+		hadUnpushed := false
+		for _, te := range w.trackers {
+			if v, ok := te.tracker.currentValue(); ok {
+				samples = append(samples, e.emit(te.key, v, w.bucket)...)
+			}
+
+			if !te.pushed {
+				hadUnpushed = true
+			}
+		}
+		if hadUnpushed {
+			e.expireCount++
+		}
+		e.evictBucket(w)
+		delete(e.windows, bucket)
 	}
 	return samples
 }
 
-// Flush returns the best known value for every tracker in every open window
+// Flush feeds the best known value for every tracker into the counter chains
 // and removes all windows. Used for graceful shutdown.
 func (e *Engine) Flush() []Sample {
 	var samples []Sample
 	for bucket, w := range e.windows {
-		samples = append(samples, w.flush()...)
+		for _, te := range w.trackers {
+			if v, ok := te.tracker.currentValue(); ok {
+				samples = append(samples, e.emit(te.key, v, w.bucket)...)
+			}
+		}
 		delete(e.windows, bucket)
 	}
 	return samples
@@ -125,7 +151,40 @@ func (e *Engine) Stats() Stats {
 		trackers += len(w.trackers)
 	}
 	return Stats{
-		OpenWindows:  len(e.windows),
-		TrackerCount: trackers,
+		OpenWindows:          len(e.windows),
+		TrackerCount:         trackers,
+		ExpireCount:          e.expireCount,
+		PostStabilizeUpdates: e.postStabilizeUpdate,
+	}
+}
+
+// emit feeds a stabilized gauge value through the per-key counter chain and
+// returns samples for every bucket whose cumulative counter changed (the
+// target bucket plus any cascaded later buckets).
+func (e *Engine) emit(key Key, gauge uint64, bucket time.Time) []Sample {
+	sk := key.String()
+	ch := e.chains[sk]
+	if ch == nil {
+		ch = newCounterChain()
+		e.chains[sk] = ch
+	}
+	emissions := ch.Set(bucket, gauge)
+	if len(emissions) == 0 {
+		return nil
+	}
+	samples := make([]Sample, len(emissions))
+	for i, em := range emissions {
+		samples[i] = Sample{Key: key, Value: em.Counter, Timestamp: em.Bucket}
+	}
+	return samples
+}
+
+// evictBucket removes the expired bucket from every counter chain that
+// references it, folding the gauge into each chain's base.
+func (e *Engine) evictBucket(w *window) {
+	for _, te := range w.trackers {
+		if ch := e.chains[te.key.String()]; ch != nil {
+			ch.Evict(w.bucket)
+		}
 	}
 }
