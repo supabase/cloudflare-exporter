@@ -38,6 +38,10 @@ func getConvergeMetricsList() []string {
 // cfetchSuffixes maps canonical MetricName values to the short metric suffix
 // strings used by the cfetch package when building Observation keys. This is
 // the single place that bridges the two naming schemes.
+var cfetchdnsSuffixes = map[MetricName]string{
+	zoneDNSQueriesMetricName: "dns_queries_total",
+}
+
 var cfetchSuffixes = map[MetricName]string{
 	zoneRequestTotalMetricName:          "requests_total",
 	zoneRequestCachedMetricName:         "requests_cached",
@@ -92,6 +96,32 @@ func cfetchEnabledSet(enabled MetricsMap) map[string]bool {
 	return out
 }
 
+func cfetchdnsEnabledSet(enabled MetricsMap) map[string]bool {
+	convergeList := getConvergeMetricsList()
+
+	candidates := cfetchdnsSuffixes
+	if len(convergeList) > 0 {
+		candidates = make(map[MetricName]string, len(convergeList))
+		for _, k := range convergeList {
+			if suffix, ok := cfetchdnsSuffixes[MetricName(k)]; ok {
+				candidates[MetricName(k)] = suffix
+			}
+		}
+	}
+
+	if len(candidates) == 0 {
+		return map[string]bool{}
+	}
+
+	out := make(map[string]bool, len(candidates))
+	for name, suffix := range candidates {
+		if _, ok := enabled[name]; ok {
+			out[suffix] = true
+		}
+	}
+	return out
+}
+
 func convergeConfig() converge.Config {
 	cfg := converge.DefaultConfig()
 	cfg.Threshold = viper.GetInt(argConvergeThreshold)
@@ -104,7 +134,7 @@ func convergeConfig() converge.Config {
 	return cfg
 }
 
-func setupDNSConverger(ctx context.Context, zones []cfzones.Zone, gql *GraphQL) (func(context.Context) error, error) {
+func setupDNSConverger(ctx context.Context, zones []cfzones.Zone, metrics MetricsMap, gql *GraphQL) (func(context.Context) error, error) {
 	sink := vmpush.New(vmpush.Config{
 		Endpoint: viper.GetString(argVMPushEndpoint),
 		Username: viper.GetString(argVMPushUser),
@@ -116,7 +146,7 @@ func setupDNSConverger(ctx context.Context, zones []cfzones.Zone, gql *GraphQL) 
 	fetcher := cfetchdns.New(
 		&gqlDNSAdapter{gql},
 		filterExcludedZones(zones, getExcludedZones()),
-		nil,
+		cfetchdnsEnabledSet(metrics),
 	)
 	return func(ctx context.Context) error {
 		return converge.Run(

@@ -243,7 +243,7 @@ func runExporter() {
 		} else {
 			go converger(ctx)
 		}
-		dnsConverger, err := setupDNSConverger(ctx, convergeZones, gql)
+		dnsConverger, err := setupDNSConverger(ctx, convergeZones, enabledMetrics, gql)
 		if err != nil {
 			log.WithError(err).Error("dns converge setup failed, skipping")
 		} else {
