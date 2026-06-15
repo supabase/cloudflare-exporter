@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/lablabs/cloudflare-exporter/cfetch"
+	"github.com/lablabs/cloudflare-exporter/cfetchdns"
 )
 
 const (
@@ -115,4 +116,14 @@ func (a *gqlAdapter) RunGQL(ctx context.Context, req *cfetch.GQLRequest, dest an
 		r.Var(k, v)
 	}
 	return a.g.Run(ctx, r, dest)
+}
+
+type gqlDNSAdapter struct{ gql *GraphQL }
+
+func (a *gqlDNSAdapter) RunGQL(ctx context.Context, req *cfetchdns.GQLRequest, dest any) error {
+	r := NewGraphQLRequest(req.Query)
+	for k, v := range req.Variables {
+		r.Var(k, v)
+	}
+	return a.gql.Run(ctx, r, dest)
 }

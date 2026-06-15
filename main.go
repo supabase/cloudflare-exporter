@@ -243,6 +243,12 @@ func runExporter() {
 		} else {
 			go converger(ctx)
 		}
+		dnsConverger, err := setupDNSConverger(ctx, convergeZones, gql)
+		if err != nil {
+			log.WithError(err).Error("dns converge setup failed, skipping")
+		} else {
+			go dnsConverger(ctx)
+		}
 
 		// --- Scrape path: original logic, unchanged from develop ---
 		// if the target zones argument is set, we only

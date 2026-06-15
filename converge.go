@@ -6,6 +6,7 @@ import (
 
 	cfzones "github.com/cloudflare/cloudflare-go/v4/zones"
 	"github.com/lablabs/cloudflare-exporter/cfetch"
+	"github.com/lablabs/cloudflare-exporter/cfetchdns"
 	"github.com/lablabs/cloudflare-exporter/converge"
 	"github.com/lablabs/cloudflare-exporter/vmpush"
 	"github.com/spf13/viper"
@@ -101,6 +102,28 @@ func convergeConfig() converge.Config {
 	cfg.BackfillChunk = viper.GetDuration(argConvergeBackfillChunk)
 	cfg.BackfillCallsPerTick = viper.GetInt(argConvergeBackfillPerTick)
 	return cfg
+}
+
+func setupDNSConverger(ctx context.Context, zones []cfzones.Zone, gql *GraphQL) (func(context.Context) error, error) {
+	sink := vmpush.New(vmpush.Config{
+		Endpoint: viper.GetString(argVMPushEndpoint),
+		Username: viper.GetString(argVMPushUser),
+		Password: viper.GetString(argVMPushPasswd),
+	})
+	if err := sink.Ping(ctx); err != nil {
+		return nil, err
+	}
+	fetcher := cfetchdns.New(
+		&gqlDNSAdapter{gql},
+		filterExcludedZones(zones, getExcludedZones()),
+		nil,
+	)
+	return func(ctx context.Context) error {
+		return converge.Run(
+			converge.ContextWithLogger(ctx, log.WithField("component", "converge-dns")),
+			convergeConfig(), fetcher, sink,
+		)
+	}, nil
 }
 
 // setupConverger validates the sink and returns a closure that runs the
