@@ -152,6 +152,49 @@ func TestStatsEmpty(t *testing.T) {
 	assert.Equal(t, 0, s.TrackerCount)
 }
 
+// TestExpireDropsUnstabilizedSeriesWhenWindowPartiallyPushed demonstrates that
+// when one series in a bucket stabilizes (setting the per-window pushed flag)
+// but a sibling series never stabilizes, the unstabilized series is silently
+// dropped on TTL expiry instead of being force-flushed.
+func TestExpireDropsUnstabilizedSeriesWhenWindowPartiallyPushed(t *testing.T) {
+	c := cfg(3)
+	c.WindowTTL = 5 * time.Minute
+	e := NewEngine(c)
+
+	// "req" stabilizes after 3 identical observations (threshold=3).
+	e.Ingest([]Observation{
+		obs("req", 100, t0),
+		obs("bytes", 5000, t0),
+	})
+	e.Ingest([]Observation{
+		obs("req", 100, t0),
+		obs("bytes", 6000, t0), // value changed, run resets
+	})
+	samples := e.Ingest([]Observation{
+		obs("req", 100, t0),
+		obs("bytes", 7000, t0), // value changed again, run resets
+	})
+
+	// "req" hit threshold=3 with value 100 and was pushed.
+	require.Len(t, samples, 1)
+	assert.Equal(t, "req", samples[0].Key.Name)
+
+	// "bytes" never stabilized (value changed every observation).
+	// The window's pushed flag is true because "req" was pushed.
+
+	// Now TTL expires. "bytes" should be force-flushed with its last observed
+	// value (7000), but the current code skips the flush because w.pushed is
+	// already true.
+	expired := e.Expire(t0.Add(6 * time.Minute))
+
+	// This assertion captures the expected correct behavior: "bytes" should
+	// appear in the expired samples with its last observed value.
+	require.Len(t, expired, 1, "unstabilized series must be force-flushed on TTL expiry")
+	assert.Equal(t, "bytes", expired[0].Key.Name)
+	assert.Equal(t, uint64(7000), expired[0].Value)
+	assert.Equal(t, 0, e.Stats().OpenWindows)
+}
+
 func TestConvergenceSequence(t *testing.T) {
 	// Simulates a CF bucket aggregating over several polls.
 	e := NewEngine(cfg(3))

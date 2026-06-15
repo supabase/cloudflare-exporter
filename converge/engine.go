@@ -87,7 +87,7 @@ func (e *Engine) Ingest(obs []Observation) []Sample {
 				Value:     o.Value,
 				Timestamp: o.Bucket,
 			})
-			w.pushed = true
+			te.pushed = true
 		}
 	}
 	return ready
@@ -100,9 +100,7 @@ func (e *Engine) Expire(now time.Time) []Sample {
 	var samples []Sample
 	for bucket, w := range e.windows {
 		if now.Sub(w.bucket) >= e.cfg.WindowTTL {
-			if !w.pushed {
-				samples = append(samples, w.flush()...)
-			}
+			samples = append(samples, w.flushUnpushed()...)
 			delete(e.windows, bucket)
 		}
 	}
