@@ -96,26 +96,19 @@ func cfetchEnabledSet(enabled MetricsMap) map[string]bool {
 	return out
 }
 
-func cfetchdnsEnabledSet(enabled MetricsMap) map[string]bool {
+func cfetchdnsEnabledSet() map[string]bool {
 	convergeList := getConvergeMetricsList()
 
-	candidates := cfetchdnsSuffixes
-	if len(convergeList) > 0 {
-		candidates = make(map[MetricName]string, len(convergeList))
-		for _, k := range convergeList {
-			if suffix, ok := cfetchdnsSuffixes[MetricName(k)]; ok {
-				candidates[MetricName(k)] = suffix
-			}
-		}
+	// No explicit converge allowlist: emit all DNS metrics unconditionally.
+	// DNS metrics are converge-only and not in metricsMap.
+	if len(convergeList) == 0 {
+		return nil
 	}
 
-	if len(candidates) == 0 {
-		return map[string]bool{}
-	}
-
-	out := make(map[string]bool, len(candidates))
-	for name, suffix := range candidates {
-		if _, ok := enabled[name]; ok {
+	// Explicit allowlist: only emit DNS metrics named in it.
+	out := make(map[string]bool)
+	for _, k := range convergeList {
+		if suffix, ok := cfetchdnsSuffixes[MetricName(k)]; ok {
 			out[suffix] = true
 		}
 	}
@@ -134,7 +127,7 @@ func convergeConfig() converge.Config {
 	return cfg
 }
 
-func setupDNSConverger(ctx context.Context, zones []cfzones.Zone, metrics MetricsMap, gql *GraphQL) (func(context.Context) error, error) {
+func setupDNSConverger(ctx context.Context, zones []cfzones.Zone, gql *GraphQL) (func(context.Context) error, error) {
 	sink := vmpush.New(vmpush.Config{
 		Endpoint: viper.GetString(argVMPushEndpoint),
 		Username: viper.GetString(argVMPushUser),
@@ -146,12 +139,13 @@ func setupDNSConverger(ctx context.Context, zones []cfzones.Zone, metrics Metric
 	fetcher := cfetchdns.New(
 		&gqlDNSAdapter{gql},
 		filterExcludedZones(zones, getExcludedZones()),
-		cfetchdnsEnabledSet(metrics),
+		cfetchdnsEnabledSet(),
 	)
+	cfg := convergeConfig()
 	return func(ctx context.Context) error {
 		return converge.Run(
 			converge.ContextWithLogger(ctx, log.WithField("component", "converge-dns")),
-			convergeConfig(), fetcher, sink,
+			cfg, fetcher, sink,
 		)
 	}, nil
 }
