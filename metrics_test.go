@@ -1,12 +1,14 @@
 package main
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -251,6 +253,82 @@ func TestTrackedGaugeSet(t *testing.T) {
 
 		assert.Equal(t, 100.0, testutil.ToFloat64(gaugeVec2.WithLabelValues(labelVals...)))
 	})
+}
+
+func TestBuildAllowedMetricsSet(t *testing.T) {
+	known := zoneRequestHTTPStatusMetricName.String()
+
+	t.Run("known metric is included", func(t *testing.T) {
+		result := buildAllowedMetricsSet([]string{known})
+		_, found := result[MetricName(known)]
+		assert.True(t, found)
+	})
+
+	t.Run("unknown metric is skipped, no panic", func(t *testing.T) {
+		hook := newLogHook()
+		result := buildAllowedMetricsSet([]string{known, "cloudflare_zone_does_not_exist"})
+		assert.Len(t, result, 1)
+		_, found := result["cloudflare_zone_does_not_exist"]
+		assert.False(t, found)
+		assert.True(t, hook.hasWarnFor("cloudflare_zone_does_not_exist"), "expected warn log for unknown metric")
+	})
+
+	t.Run("all unknown returns empty map", func(t *testing.T) {
+		result := buildAllowedMetricsSet([]string{"cloudflare_zone_does_not_exist"})
+		assert.Empty(t, result)
+	})
+}
+
+func TestBuildDeniedMetricsSet(t *testing.T) {
+	known := zoneRequestHTTPStatusMetricName.String()
+
+	t.Run("known metric is removed", func(t *testing.T) {
+		result := buildDeniedMetricsSet([]string{known})
+		_, found := result[MetricName(known)]
+		assert.False(t, found)
+		assert.Less(t, len(result), len(metricsMap))
+	})
+
+	t.Run("unknown metric is skipped, no panic", func(t *testing.T) {
+		hook := newLogHook()
+		result := buildDeniedMetricsSet([]string{"cloudflare_zone_does_not_exist"})
+		assert.Len(t, result, len(metricsMap))
+		assert.True(t, hook.hasWarnFor("cloudflare_zone_does_not_exist"), "expected warn log for unknown metric")
+	})
+
+	t.Run("mixed known and unknown — known removed, unknown skipped", func(t *testing.T) {
+		result := buildDeniedMetricsSet([]string{known, "cloudflare_zone_does_not_exist"})
+		_, found := result[MetricName(known)]
+		assert.False(t, found, "known metric should be removed")
+		assert.Len(t, result, len(metricsMap)-1)
+	})
+}
+
+// logHook captures logrus entries emitted to the package-level logger.
+type logHook struct {
+	entries []*logrus.Entry
+}
+
+func newLogHook() *logHook {
+	h := &logHook{}
+	log.AddHook(h)
+	return h
+}
+
+func (h *logHook) Levels() []logrus.Level { return logrus.AllLevels }
+func (h *logHook) Fire(e *logrus.Entry) error {
+	h.entries = append(h.entries, e)
+	return nil
+}
+func (h *logHook) hasWarnFor(metric string) bool {
+	for _, e := range h.entries {
+		if e.Level == logrus.WarnLevel {
+			if v, ok := e.Data["metric"]; ok && fmt.Sprintf("%v", v) == metric {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func TestNewTrackedCounter(t *testing.T) {

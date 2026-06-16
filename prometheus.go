@@ -475,29 +475,31 @@ func init() {
 	metricsMap[accountCustomHostnamesQuotaUsedMetricName] = accountCustomHostnamesQuotaUsed
 }
 
-func buildDeniedMetricsSet(metricsDenylist []string) (MetricsMap, error) {
+func buildDeniedMetricsSet(metricsDenylist []string) MetricsMap {
 	out := maps.Clone(metricsMap)
 	for _, metric := range metricsDenylist {
 		name := MetricName(metric)
 		if _, found := out[name]; !found {
-			return nil, fmt.Errorf("metric %s doesn't exists", name)
+			log.WithField("metric", name).Warn("denylist entry not registered in scrape path, skipping")
+			continue
 		}
 		delete(out, name)
 	}
-	return out, nil
+	return out
 }
 
-func buildAllowedMetricsSet(allowList []string) (MetricsMap, error) {
+func buildAllowedMetricsSet(allowList []string) MetricsMap {
 	out := MetricsMap{}
 	for _, metric := range allowList {
 		name := MetricName(metric)
-		metric, found := metricsMap[name]
+		m, found := metricsMap[name]
 		if !found {
-			return nil, fmt.Errorf("metric %s doesn't exists", name)
+			log.WithField("metric", name).Warn("allowlist entry not registered in scrape path, skipping")
+			continue
 		}
-		out[name] = metric
+		out[name] = m
 	}
-	return out, nil
+	return out
 }
 
 // check if none of the `metricNames` are in `metrics` we can skip
