@@ -253,6 +253,44 @@ func TestTrackedGaugeSet(t *testing.T) {
 	})
 }
 
+func TestBuildAllowedMetricsSet(t *testing.T) {
+	known := zoneRequestHTTPStatusMetricName.String()
+
+	t.Run("known metric is included", func(t *testing.T) {
+		result := buildAllowedMetricsSet([]string{known})
+		_, found := result[MetricName(known)]
+		assert.True(t, found)
+	})
+
+	t.Run("unknown metric is skipped, no panic", func(t *testing.T) {
+		result := buildAllowedMetricsSet([]string{known, "cloudflare_zone_does_not_exist"})
+		assert.Len(t, result, 1)
+		_, found := result["cloudflare_zone_does_not_exist"]
+		assert.False(t, found)
+	})
+
+	t.Run("all unknown returns empty map", func(t *testing.T) {
+		result := buildAllowedMetricsSet([]string{"cloudflare_zone_does_not_exist"})
+		assert.Empty(t, result)
+	})
+}
+
+func TestBuildDeniedMetricsSet(t *testing.T) {
+	known := zoneRequestHTTPStatusMetricName.String()
+
+	t.Run("known metric is removed", func(t *testing.T) {
+		result := buildDeniedMetricsSet([]string{known})
+		_, found := result[MetricName(known)]
+		assert.False(t, found)
+		assert.Less(t, len(result), len(metricsMap))
+	})
+
+	t.Run("unknown metric is skipped, no panic", func(t *testing.T) {
+		result := buildDeniedMetricsSet([]string{"cloudflare_zone_does_not_exist"})
+		assert.Len(t, result, len(metricsMap))
+	})
+}
+
 func TestNewTrackedCounter(t *testing.T) {
 	counterVec := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "test_counter",
