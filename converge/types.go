@@ -96,6 +96,13 @@ type Pinger interface {
 
 // Stats provides a snapshot of engine state for monitoring.
 type Stats struct {
-	OpenWindows  int
-	TrackerCount int
+	OpenWindows          int
+	TrackerCount         int
+	ExpireCount          uint64
+	PostStabilizeUpdates uint64
+}
+
+func (s Stats) String() string {
+	return fmt.Sprintf("windows=%d trackers=%d expires=%d rewrites=%d",
+		s.OpenWindows, s.TrackerCount, s.ExpireCount, s.PostStabilizeUpdates)
 }

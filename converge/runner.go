@@ -3,6 +3,8 @@ package converge
 import (
 	"context"
 	"time"
+
+	"github.com/sirupsen/logrus"
 )
 
 // Run drives an Engine in a loop, fetching observations from f and pushing
@@ -54,9 +56,16 @@ func Run(ctx context.Context, cfg Config, f Fetcher, s Sink) error {
 			if err != nil {
 				log.WithError(err).Error("live fetch failed")
 			} else {
+				logObservationStats(log, obs, now)
 				pushSamples(ctx, s, eng.Ingest(obs))
 			}
 			pushSamples(ctx, s, eng.Expire(now))
+
+			st := eng.Stats()
+			log.WithField("post_stabilize_update_count", st.PostStabilizeUpdates).
+				WithField("tracker_expire_count", st.ExpireCount).
+				WithField("tracker_count", st.TrackerCount).
+				WithField("open_windows", st.OpenWindows).Info("engine stats")
 
 			// Backfill lane: capped at BackfillCallsPerTick.
 			if backfillDone {
@@ -88,6 +97,31 @@ func Run(ctx context.Context, cfg Config, f Fetcher, s Sink) error {
 			}
 		}
 	}
+}
+
+func logObservationStats(log *logrus.Entry, obs []Observation, now time.Time) {
+	if len(obs) == 0 {
+		log.WithField("observations", 0).Info("live fetch: empty")
+		return
+	}
+	buckets := make(map[time.Time]struct{})
+	oldest := obs[0].Bucket
+	newest := obs[0].Bucket
+	for _, o := range obs {
+		buckets[o.Bucket] = struct{}{}
+		if o.Bucket.Before(oldest) {
+			oldest = o.Bucket
+		}
+		if o.Bucket.After(newest) {
+			newest = o.Bucket
+		}
+	}
+	log.WithField("observations", len(obs)).
+		WithField("buckets", len(buckets)).
+		WithField("oldest", oldest.Format(time.RFC3339)).
+		WithField("newest", newest.Format(time.RFC3339)).
+		WithField("newest_age", now.Sub(newest).Truncate(time.Second).String()).
+		Info("live fetch")
 }
 
 func pushSamples(ctx context.Context, s Sink, samples []Sample) {

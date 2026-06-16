@@ -195,6 +195,128 @@ func TestExpireDropsUnstabilizedSeriesWhenWindowPartiallyPushed(t *testing.T) {
 	assert.Equal(t, 0, e.Stats().OpenWindows)
 }
 
+func TestIngestCounterAccumulation(t *testing.T) {
+	// Two buckets for the same series: sample values are cumulative counters.
+	e := NewEngine(cfg(1))
+	t1 := t0.Add(time.Minute)
+
+	samples := e.Ingest([]Observation{
+		obs("req", 100, t0),
+		obs("req", 200, t1),
+	})
+
+	require.Len(t, samples, 2)
+	assert.Equal(t, t0, samples[0].Timestamp)
+	assert.Equal(t, uint64(100), samples[0].Value) // counter at t0
+	assert.Equal(t, t1, samples[1].Timestamp)
+	assert.Equal(t, uint64(300), samples[1].Value) // counter at t1: 100+200
+}
+
+func TestIngestCounterCascade(t *testing.T) {
+	// An earlier bucket re-converging cascades corrected counter values
+	// to later buckets.
+	e := NewEngine(cfg(3))
+	t1 := t0.Add(time.Minute)
+
+	// t0 stabilizes at 100, t1 stabilizes at 200.
+	e.Ingest([]Observation{obs("req", 100, t0), obs("req", 200, t1)})
+	e.Ingest([]Observation{obs("req", 100, t0), obs("req", 200, t1)})
+	samples := e.Ingest([]Observation{obs("req", 100, t0), obs("req", 200, t1)})
+
+	require.Len(t, samples, 2)
+	assert.Equal(t, uint64(100), samples[0].Value) // t0 counter
+	assert.Equal(t, uint64(300), samples[1].Value) // t1 counter: 100+200
+
+	// t0 re-converges from 100 → 150. This cascades to t1.
+	e.Ingest([]Observation{obs("req", 150, t0)})
+	e.Ingest([]Observation{obs("req", 150, t0)})
+	samples = e.Ingest([]Observation{obs("req", 150, t0)})
+
+	require.Len(t, samples, 2)
+	assert.Equal(t, t0, samples[0].Timestamp)
+	assert.Equal(t, uint64(150), samples[0].Value) // t0: 150
+	assert.Equal(t, t1, samples[1].Timestamp)
+	assert.Equal(t, uint64(350), samples[1].Value) // t1: 150+200
+}
+
+func TestExpireMultipleWindowsEvictInOrder(t *testing.T) {
+	// Two windows for the same series expire simultaneously. The chain
+	// must evict oldest-first; nondeterministic map iteration would cause
+	// the newer bucket's Evict to fail silently.
+	c := cfg(1)
+	c.WindowTTL = 5 * time.Minute
+	e := NewEngine(c)
+	t1 := t0.Add(time.Minute)
+	t2 := t0.Add(2 * time.Minute)
+
+	e.Ingest([]Observation{obs("req", 100, t0)}) // counter: 100
+	e.Ingest([]Observation{obs("req", 200, t1)}) // counter: 300
+	e.Ingest([]Observation{obs("req", 300, t2)}) // counter: 600
+
+	// Expire all three at once (now = t0 + 8m, all are > 5m old).
+	expired := e.Expire(t0.Add(8 * time.Minute))
+	assert.Empty(t, expired) // all were already pushed
+
+	// All three should have been evicted from the chain. The base should
+	// hold the full sum. Verify by adding a new bucket.
+	t3 := t0.Add(10 * time.Minute)
+	samples := e.Ingest([]Observation{obs("req", 50, t3)})
+	require.Len(t, samples, 1)
+	assert.Equal(t, uint64(650), samples[0].Value) // base(600) + 50
+}
+
+func TestExpireCounterEviction(t *testing.T) {
+	// After a bucket is expired, its value is folded into the chain base
+	// and subsequent buckets still produce correct counters.
+	c := cfg(1)
+	c.WindowTTL = 5 * time.Minute
+	e := NewEngine(c)
+	t1 := t0.Add(time.Minute)
+	t2 := t0.Add(10 * time.Minute)
+
+	e.Ingest([]Observation{obs("req", 100, t0)}) // counter: 100
+	e.Ingest([]Observation{obs("req", 200, t1)}) // counter: 300
+
+	// Expire t0 (age 6m > TTL 5m). chain.Set(t0, 100) is a no-op (unchanged),
+	// then evict folds 100 into base.
+	expired := e.Expire(t0.Add(6 * time.Minute))
+	assert.Empty(t, expired) // no new emissions, value unchanged
+
+	// t1 also expires at 6m30s.
+	expired = e.Expire(t0.Add(6*time.Minute + 30*time.Second))
+	assert.Empty(t, expired) // same, already pushed
+
+	// New bucket after both evictions should accumulate from base.
+	samples := e.Ingest([]Observation{obs("req", 400, t2)})
+	require.Len(t, samples, 1)
+	assert.Equal(t, uint64(700), samples[0].Value) // base(300) + 400
+}
+
+func TestExpireCounterCapturesPostStabilizationDrift(t *testing.T) {
+	// A tracker stabilizes at 100 but then sees 110, 115 without
+	// re-stabilizing. On expire, the engine feeds the latest value (115)
+	// to the chain.
+	c := cfg(3)
+	c.WindowTTL = 5 * time.Minute
+	e := NewEngine(c)
+
+	// Stabilize at 100.
+	e.Ingest([]Observation{obs("req", 100, t0)})
+	e.Ingest([]Observation{obs("req", 100, t0)})
+	samples := e.Ingest([]Observation{obs("req", 100, t0)})
+	require.Len(t, samples, 1)
+	assert.Equal(t, uint64(100), samples[0].Value)
+
+	// Value drifts up without re-stabilizing (run resets each time).
+	e.Ingest([]Observation{obs("req", 110, t0)})
+	e.Ingest([]Observation{obs("req", 115, t0)})
+
+	// On expire, the engine feeds currentValue (115) to the chain.
+	expired := e.Expire(t0.Add(6 * time.Minute))
+	require.Len(t, expired, 1)
+	assert.Equal(t, uint64(115), expired[0].Value) // updated counter
+}
+
 func TestConvergenceSequence(t *testing.T) {
 	// Simulates a CF bucket aggregating over several polls.
 	e := NewEngine(cfg(3))

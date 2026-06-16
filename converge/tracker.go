@@ -2,6 +2,14 @@ package converge
 
 import "time"
 
+type observeResult int
+
+const (
+	obsNOOP observeResult = iota
+	obsConverging
+	obsRewrite
+)
+
 // tracker monitors a uint64 value for stabilization. A value is considered
 // stable after threshold consecutive identical observations.
 type tracker struct {
@@ -25,12 +33,17 @@ func newTracker(threshold int) *tracker {
 // observe records a new value. When the run of identical values reaches the
 // threshold exactly, the tracker sets the needsSync flag (unless the value
 // matches the last synced value).
-func (t *tracker) observe(value uint64, at time.Time) {
+func (t *tracker) observe(value uint64, at time.Time) observeResult {
+	out := obsConverging
 	if !t.seen || value != t.current {
 		t.current = value
+		if t.runLen >= t.threshold {
+			out = obsRewrite
+		}
 		t.runLen = 1
 		t.seen = true
 	} else {
+		out = obsNOOP
 		t.runLen++
 	}
 
@@ -40,6 +53,7 @@ func (t *tracker) observe(value uint64, at time.Time) {
 			t.needsSync = true
 		}
 	}
+	return out
 }
 
 // needsSyncAndConsume reports whether a new stable value is pending sync.
