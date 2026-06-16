@@ -8,7 +8,6 @@ package cfetchdns
 import (
 	"context"
 	"fmt"
-	"slices"
 	"time"
 
 	cfzones "github.com/cloudflare/cloudflare-go/v4/zones"
@@ -17,9 +16,8 @@ import (
 )
 
 const (
-	maxZonesPerQuery = 10
-	gqlQueryLimit    = 9999
-	metricPrefix     = "cfp_zone_"
+	gqlQueryLimit = 9999
+	metricPrefix  = "cfp_zone_"
 )
 
 // Fetcher implements converge.Fetcher by querying Cloudflare's GraphQL API
@@ -39,24 +37,17 @@ func New(client cfgql.GQLClient, zones []cfzones.Zone, enabled map[string]bool) 
 }
 
 func (f *Fetcher) Fetch(ctx context.Context, start, end time.Time) ([]converge.Observation, error) {
-	var allObs []converge.Observation
-
-	l := converge.LoggerFromContext(ctx)
-	for chunk := range slices.Chunk(f.zones, maxZonesPerQuery) {
-		ids := zoneIDs(chunk)
+	return cfgql.FetchZones(ctx, f.zones, "cfetchdns", func(ctx context.Context, chunk []cfzones.Zone, ids []string) ([]converge.Observation, error) {
 		resp, err := f.fetchRange(ctx, ids, start, end)
 		if err != nil {
-			l.WithError(err).Warn("cfetchdns: skipping chunk")
-			continue
+			return nil, err
 		}
-
+		var obs []converge.Observation
 		for _, z := range resp.Viewer.Zones {
-			name := findZoneName(chunk, z.ZoneTag)
-			allObs = append(allObs, flattenDNSGroups(z, name, f.enabled)...)
+			obs = append(obs, flattenDNSGroups(z, cfgql.FindZoneName(chunk, z.ZoneTag), f.enabled)...)
 		}
-	}
-
-	return allObs, nil
+		return obs, nil
+	})
 }
 
 // --- GraphQL query and response types ----------------------------------------
@@ -149,23 +140,4 @@ func flattenDNSGroups(z zoneData, zoneName string, enabled map[string]bool) []co
 	}
 
 	return obs
-}
-
-// --- Helpers -----------------------------------------------------------------
-
-func zoneIDs(zones []cfzones.Zone) []string {
-	ids := make([]string, len(zones))
-	for i, z := range zones {
-		ids[i] = z.ID
-	}
-	return ids
-}
-
-func findZoneName(zones []cfzones.Zone, id string) string {
-	for _, z := range zones {
-		if z.ID == id {
-			return z.Name
-		}
-	}
-	return id
 }
