@@ -7,6 +7,7 @@ import (
 	"time"
 
 	cfzones "github.com/cloudflare/cloudflare-go/v4/zones"
+	"github.com/lablabs/cloudflare-exporter/cfgql"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -16,7 +17,7 @@ type mockGQLClient struct {
 	err  error
 }
 
-func (m *mockGQLClient) RunGQL(_ context.Context, _ *GQLRequest, dest any) error {
+func (m *mockGQLClient) RunGQL(_ context.Context, _ *cfgql.GQLRequest, dest any) error {
 	if m.err != nil {
 		return m.err
 	}

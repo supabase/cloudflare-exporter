@@ -2,7 +2,7 @@
 //
 // It queries dnsAnalyticsAdaptiveGroups over a time range and flattens the response
 // into converge.Observations. The GraphQL client is injected at construction
-// time via the GQLClient interface.
+// time via the cfgql.GQLClient interface.
 package cfetchdns
 
 import (
@@ -12,21 +12,9 @@ import (
 	"time"
 
 	cfzones "github.com/cloudflare/cloudflare-go/v4/zones"
+	"github.com/lablabs/cloudflare-exporter/cfgql"
 	"github.com/lablabs/cloudflare-exporter/converge"
 )
-
-// GQLClient executes a GraphQL query. The request is JSON-encoded and POSTed.
-// The root package's *GraphQL type does not satisfy this directly (it takes
-// *GraphQLRequest, not *GQLRequest), so main.go wraps it with a thin adapter.
-type GQLClient interface {
-	RunGQL(ctx context.Context, req *GQLRequest, dest any) error
-}
-
-// GQLRequest is the GraphQL request payload.
-type GQLRequest struct {
-	Query     string         `json:"query"`
-	Variables map[string]any `json:"variables"`
-}
 
 const (
 	maxZonesPerQuery = 10
@@ -37,7 +25,7 @@ const (
 // Fetcher implements converge.Fetcher by querying Cloudflare's GraphQL API
 // for zone DNS analytics over a time range.
 type Fetcher struct {
-	client  GQLClient
+	client  cfgql.GQLClient
 	zones   []cfzones.Zone
 	enabled map[string]bool // metric suffixes to emit; nil = emit all
 }
@@ -46,7 +34,7 @@ type Fetcher struct {
 // GraphQL client. The caller is responsible for filtering out free-plan zones
 // before passing them in. If enabled is non-nil, only metric suffixes present
 // in the map are emitted as observations.
-func New(client GQLClient, zones []cfzones.Zone, enabled map[string]bool) *Fetcher {
+func New(client cfgql.GQLClient, zones []cfzones.Zone, enabled map[string]bool) *Fetcher {
 	return &Fetcher{client: client, zones: zones, enabled: enabled}
 }
 
@@ -116,7 +104,7 @@ query ($zoneIDs: [String!], $startTime: Time!, $endTime: Time!, $limit: Int!) {
 `
 
 func (f *Fetcher) fetchRange(ctx context.Context, zoneIDs []string, start, end time.Time) (*rangeResponse, error) {
-	req := &GQLRequest{
+	req := &cfgql.GQLRequest{
 		Query: rangeQuery,
 		Variables: map[string]any{
 			"zoneIDs":   zoneIDs,

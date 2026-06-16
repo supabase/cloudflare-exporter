@@ -127,7 +127,7 @@ func convergeConfig() converge.Config {
 	return cfg
 }
 
-func setupDNSConverger(ctx context.Context, zones []cfzones.Zone, gql *GraphQL) (func(context.Context) error, error) {
+func setupConvergerWithFetcher(ctx context.Context, component string, fetcher converge.Fetcher) (func(context.Context) error, error) {
 	sink := vmpush.New(vmpush.Config{
 		Endpoint: viper.GetString(argVMPushEndpoint),
 		Username: viper.GetString(argVMPushUser),
@@ -136,45 +136,29 @@ func setupDNSConverger(ctx context.Context, zones []cfzones.Zone, gql *GraphQL) 
 	if err := sink.Ping(ctx); err != nil {
 		return nil, err
 	}
-	fetcher := cfetchdns.New(
-		&gqlDNSAdapter{gql},
-		filterExcludedZones(zones, getExcludedZones()),
-		cfetchdnsEnabledSet(),
-	)
 	cfg := convergeConfig()
 	return func(ctx context.Context) error {
 		return converge.Run(
-			converge.ContextWithLogger(ctx, log.WithField("component", "converge-dns")),
+			converge.ContextWithLogger(ctx, log.WithField("component", component)),
 			cfg, fetcher, sink,
 		)
 	}, nil
 }
 
-// setupConverger validates the sink and returns a closure that runs the
-// converge loop. The caller decides whether to run it in a goroutine.
-func setupConverger(ctx context.Context, convergeZones []cfzones.Zone, metrics MetricsMap, gql *GraphQL,
-) (func(context.Context) error, error) {
-	sink := vmpush.New(vmpush.Config{
-		Endpoint: viper.GetString(argVMPushEndpoint),
-		Username: viper.GetString(argVMPushUser),
-		Password: viper.GetString(argVMPushPasswd),
-	})
+func setupDNSConverger(ctx context.Context, zones []cfzones.Zone, gql *GraphQL) (func(context.Context) error, error) {
+	fetcher := cfetchdns.New(
+		&gqlAdapter{gql},
+		filterExcludedZones(zones, getExcludedZones()),
+		cfetchdnsEnabledSet(),
+	)
+	return setupConvergerWithFetcher(ctx, "converge-dns", fetcher)
+}
 
-	if err := sink.Ping(ctx); err != nil {
-		return nil, err
-	}
-
-	cfg := convergeConfig()
+func setupConverger(ctx context.Context, convergeZones []cfzones.Zone, metrics MetricsMap, gql *GraphQL) (func(context.Context) error, error) {
 	fetcher := cfetch.New(
 		&gqlAdapter{gql},
 		filterExcludedZones(convergeZones, getExcludedZones()),
 		cfetchEnabledSet(metrics),
 	)
-
-	return func(ctx context.Context) error {
-		return converge.Run(
-			converge.ContextWithLogger(ctx, log.WithField("component", "converge")),
-			cfg, fetcher, sink,
-		)
-	}, nil
+	return setupConvergerWithFetcher(ctx, "converge", fetcher)
 }
