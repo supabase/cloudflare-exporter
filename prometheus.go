@@ -62,6 +62,9 @@ const (
 	zoneCustomHostnamesTotalMetricName             MetricName = "cloudflare_zone_custom_hostnames_total"
 	accountCustomHostnamesQuotaAllocatedMetricName MetricName = "cloudflare_account_custom_hostnames_quota_allocated"
 	accountCustomHostnamesQuotaUsedMetricName      MetricName = "cloudflare_account_custom_hostnames_quota_used"
+
+	// DNS analytics — no scrape path equivalent, converge-only.
+	zoneDNSQueriesMetricName MetricName = "cloudflare_zone_dns_queries_total"
 )
 
 type MetricsMap map[MetricName]trackedMetric

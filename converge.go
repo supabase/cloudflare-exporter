@@ -6,6 +6,7 @@ import (
 
 	cfzones "github.com/cloudflare/cloudflare-go/v4/zones"
 	"github.com/lablabs/cloudflare-exporter/cfetch"
+	"github.com/lablabs/cloudflare-exporter/cfetchdns"
 	"github.com/lablabs/cloudflare-exporter/converge"
 	"github.com/lablabs/cloudflare-exporter/vmpush"
 	"github.com/spf13/viper"
@@ -37,6 +38,10 @@ func getConvergeMetricsList() []string {
 // cfetchSuffixes maps canonical MetricName values to the short metric suffix
 // strings used by the cfetch package when building Observation keys. This is
 // the single place that bridges the two naming schemes.
+var cfetchdnsSuffixes = map[MetricName]string{
+	zoneDNSQueriesMetricName: "dns_queries_total",
+}
+
 var cfetchSuffixes = map[MetricName]string{
 	zoneRequestTotalMetricName:          "requests_total",
 	zoneRequestCachedMetricName:         "requests_cached",
@@ -91,6 +96,25 @@ func cfetchEnabledSet(enabled MetricsMap) map[string]bool {
 	return out
 }
 
+func cfetchdnsEnabledSet() map[string]bool {
+	convergeList := getConvergeMetricsList()
+
+	// No explicit converge allowlist: emit all DNS metrics unconditionally.
+	// DNS metrics are converge-only and not in metricsMap.
+	if len(convergeList) == 0 {
+		return nil
+	}
+
+	// Explicit allowlist: only emit DNS metrics named in it.
+	out := make(map[string]bool)
+	for _, k := range convergeList {
+		if suffix, ok := cfetchdnsSuffixes[MetricName(k)]; ok {
+			out[suffix] = true
+		}
+	}
+	return out
+}
+
 func convergeConfig() converge.Config {
 	cfg := converge.DefaultConfig()
 	cfg.Threshold = viper.GetInt(argConvergeThreshold)
@@ -103,31 +127,38 @@ func convergeConfig() converge.Config {
 	return cfg
 }
 
-// setupConverger validates the sink and returns a closure that runs the
-// converge loop. The caller decides whether to run it in a goroutine.
-func setupConverger(ctx context.Context, convergeZones []cfzones.Zone, metrics MetricsMap, gql *GraphQL,
-) (func(context.Context) error, error) {
+func setupConvergerWithFetcher(ctx context.Context, component string, fetcher converge.Fetcher) (func(context.Context) error, error) {
 	sink := vmpush.New(vmpush.Config{
 		Endpoint: viper.GetString(argVMPushEndpoint),
 		Username: viper.GetString(argVMPushUser),
 		Password: viper.GetString(argVMPushPasswd),
 	})
-
 	if err := sink.Ping(ctx); err != nil {
 		return nil, err
 	}
-
 	cfg := convergeConfig()
+	return func(ctx context.Context) error {
+		return converge.Run(
+			converge.ContextWithLogger(ctx, log.WithField("component", component)),
+			cfg, fetcher, sink,
+		)
+	}, nil
+}
+
+func setupDNSConverger(ctx context.Context, zones []cfzones.Zone, gql *GraphQL) (func(context.Context) error, error) {
+	fetcher := cfetchdns.New(
+		&gqlAdapter{gql},
+		filterExcludedZones(zones, getExcludedZones()),
+		cfetchdnsEnabledSet(),
+	)
+	return setupConvergerWithFetcher(ctx, "converge-dns", fetcher)
+}
+
+func setupConverger(ctx context.Context, convergeZones []cfzones.Zone, metrics MetricsMap, gql *GraphQL) (func(context.Context) error, error) {
 	fetcher := cfetch.New(
 		&gqlAdapter{gql},
 		filterExcludedZones(convergeZones, getExcludedZones()),
 		cfetchEnabledSet(metrics),
 	)
-
-	return func(ctx context.Context) error {
-		return converge.Run(
-			converge.ContextWithLogger(ctx, log.WithField("component", "converge")),
-			cfg, fetcher, sink,
-		)
-	}, nil
+	return setupConvergerWithFetcher(ctx, "converge", fetcher)
 }
