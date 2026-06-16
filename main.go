@@ -200,17 +200,9 @@ func runExporter() {
 	}
 
 	if denylist != "" {
-		var err error
-		enabledMetrics, err = buildDeniedMetricsSet(strings.Split(denylist, ","))
-		if err != nil {
-			log.Fatalf("Error building metrics set: %v", err)
-		}
+		enabledMetrics = buildDeniedMetricsSet(strings.Split(denylist, ","))
 	} else if allowlist != "" {
-		var err error
-		enabledMetrics, err = buildAllowedMetricsSet(strings.Split(allowlist, ","))
-		if err != nil {
-			log.Fatalf("Error building metrics set: %v", err)
-		}
+		enabledMetrics = buildAllowedMetricsSet(strings.Split(allowlist, ","))
 	} else {
 		enabledMetrics = metricsMap
 	}
