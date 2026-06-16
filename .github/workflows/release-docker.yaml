@@ -36,17 +36,18 @@ jobs:
       - name: Build and push
         id: publish-image
         env:
-          IMAGE_VERSION: latest
+          SHORT_SHA: ${{ github.sha }}
           KO_DOCKER_REPO: "ghcr.io/${{ github.repository }}"
         run: |
-          ko build . --sbom=none --image-refs ./image-digest --bare --platform linux/arm64,linux/amd64 -t ${IMAGE_VERSION} \
+          SHORT_SHA="${SHORT_SHA:0:7}"
+          ko build . --sbom=none --image-refs ./image-digest --bare --platform linux/arm64,linux/amd64 -t latest -t "sha-${SHORT_SHA}" \
             --image-label org.opencontainers.image.title=cloudflare-exporter \
             --image-label org.opencontainers.image.description="Prometheus CloudFlare Exporter" \
             --image-label org.opencontainers.image.url=${{ github.server_url }}/${{ github.repository }} \
             --image-label org.opencontainers.image.revision=${{ github.sha }} \
             --image-label org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }} \
             --image-label org.opencontainers.image.licenses=Apache-2.0 \
-            --image-label org.opencontainers.image.version=${IMAGE_VERSION} \
+            --image-label org.opencontainers.image.version="sha-${SHORT_SHA}" \
             --image-label org.opencontainers.image.created="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
 
           # Extract image digest from ko output
