@@ -207,6 +207,9 @@ func runExporter() {
 		enabledMetrics = metricsMap
 	}
 
+	if len(enabledMetrics) == 0 {
+		log.Warn("metrics set is empty — all allowlist/denylist entries may be unrecognised")
+	}
 	log.Infof("Metrics set: %v", slices.Sorted(maps.Keys(enabledMetrics)))
 	for _, metric := range enabledMetrics {
 		metric.MustRegisterWith(prometheus.DefaultRegisterer)
