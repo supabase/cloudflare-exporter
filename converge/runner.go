@@ -30,7 +30,6 @@ func Run(ctx context.Context, cfg Config, f Fetcher, s Sink) error {
 	log := LoggerFromContext(ctx)
 	eng := NewEngine(cfg)
 	ticker := time.NewTicker(cfg.PollInterval)
-	logInterval := time.NewTicker(time.Second * 60)
 	defer ticker.Stop()
 
 	backfillCursor := time.Now().Add(-cfg.MaxBackfill).Truncate(time.Minute)
@@ -50,14 +49,6 @@ func Run(ctx context.Context, cfg Config, f Fetcher, s Sink) error {
 			}
 			return ctx.Err()
 
-		case <-logInterval.C:
-			s := eng.Stats()
-
-			log.WithField("post_stabilize_update_count", s.PostStabilizeUpdates).
-				WithField("tracker_expire_count", s.ExpireCount).
-				WithField("tracker_count", s.TrackerCount).
-				WithField("open_windows", s.OpenWindows).Info("engine stats")
-
 		case now := <-ticker.C:
 			// Live lane: always runs, no call limit.
 			liveStart := now.Add(-cfg.Lookback)
@@ -69,6 +60,12 @@ func Run(ctx context.Context, cfg Config, f Fetcher, s Sink) error {
 				pushSamples(ctx, s, eng.Ingest(obs))
 			}
 			pushSamples(ctx, s, eng.Expire(now))
+
+			st := eng.Stats()
+			log.WithField("post_stabilize_update_count", st.PostStabilizeUpdates).
+				WithField("tracker_expire_count", st.ExpireCount).
+				WithField("tracker_count", st.TrackerCount).
+				WithField("open_windows", st.OpenWindows).Info("engine stats")
 
 			// Backfill lane: capped at BackfillCallsPerTick.
 			if backfillDone {

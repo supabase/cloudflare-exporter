@@ -180,7 +180,7 @@ func TestTrackerUnconsumedSyncNewStabilization(t *testing.T) {
 }
 
 func TestTrackerObserveOutcomeRewriteAfterExtendedStability(t *testing.T) {
-	// Verifies observedRewrite fires even when runLen > threshold (not just ==).
+	// Verifies obsRewrite fires even when runLen > threshold (not just ==).
 	tr := newTracker(2)
 
 	tr.observe(10, tt0)

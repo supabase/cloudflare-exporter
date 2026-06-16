@@ -239,6 +239,32 @@ func TestIngestCounterCascade(t *testing.T) {
 	assert.Equal(t, uint64(350), samples[1].Value) // t1: 150+200
 }
 
+func TestExpireMultipleWindowsEvictInOrder(t *testing.T) {
+	// Two windows for the same series expire simultaneously. The chain
+	// must evict oldest-first; nondeterministic map iteration would cause
+	// the newer bucket's Evict to fail silently.
+	c := cfg(1)
+	c.WindowTTL = 5 * time.Minute
+	e := NewEngine(c)
+	t1 := t0.Add(time.Minute)
+	t2 := t0.Add(2 * time.Minute)
+
+	e.Ingest([]Observation{obs("req", 100, t0)}) // counter: 100
+	e.Ingest([]Observation{obs("req", 200, t1)}) // counter: 300
+	e.Ingest([]Observation{obs("req", 300, t2)}) // counter: 600
+
+	// Expire all three at once (now = t0 + 8m, all are > 5m old).
+	expired := e.Expire(t0.Add(8 * time.Minute))
+	assert.Empty(t, expired) // all were already pushed
+
+	// All three should have been evicted from the chain. The base should
+	// hold the full sum. Verify by adding a new bucket.
+	t3 := t0.Add(10 * time.Minute)
+	samples := e.Ingest([]Observation{obs("req", 50, t3)})
+	require.Len(t, samples, 1)
+	assert.Equal(t, uint64(650), samples[0].Value) // base(600) + 50
+}
+
 func TestExpireCounterEviction(t *testing.T) {
 	// After a bucket is expired, its value is folded into the chain base
 	// and subsequent buckets still produce correct counters.

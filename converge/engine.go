@@ -1,6 +1,9 @@
 package converge
 
-import "time"
+import (
+	"slices"
+	"time"
+)
 
 // Config controls engine behavior. See README.md for detailed descriptions.
 type Config struct {
@@ -105,11 +108,24 @@ func (e *Engine) Ingest(obs []Observation) []Sample {
 // capturing any post-stabilization drift. The bucket is then evicted from
 // each chain, folding its gauge into the chain's base.
 func (e *Engine) Expire(now time.Time) []Sample {
-	var samples []Sample
-	for bucket, w := range e.windows {
-		if now.Sub(w.bucket) < e.cfg.WindowTTL {
-			continue
+	// Collect expired buckets and process them in ascending time order.
+	// counterChain.Evict only succeeds on the oldest entry, so
+	// nondeterministic map iteration would cause evictions to silently
+	// fail when a newer bucket is visited before an older one.
+	var expired []time.Time
+	for bucket := range e.windows {
+		if now.Sub(bucket) >= e.cfg.WindowTTL {
+			expired = append(expired, bucket)
 		}
+	}
+	if len(expired) == 0 {
+		return nil
+	}
+	slices.SortFunc(expired, func(a, b time.Time) int { return a.Compare(b) })
+
+	var samples []Sample
+	for _, bucket := range expired {
+		w := e.windows[bucket]
 		hadUnpushed := false
 		for _, te := range w.trackers {
 			if v, ok := te.tracker.currentValue(); ok {
