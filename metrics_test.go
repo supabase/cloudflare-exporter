@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
+	"fmt"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
-	"fmt"
 
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
