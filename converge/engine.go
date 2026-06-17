@@ -30,7 +30,7 @@ func DefaultConfig() Config {
 		Lookback:             10 * time.Minute,
 		MaxBackfill:          2 * time.Hour,
 		BackfillChunk:        10 * time.Minute,
-		BackfillCallsPerTick: 1,
+		BackfillCallsPerTick: 3,
 	}
 }
 
@@ -56,9 +56,16 @@ func DefaultConfig() Config {
 type Engine struct {
 	cfg                 Config
 	windows             map[time.Time]*window
-	chains              map[string]*counterChain // per-key counter accumulation
+	chains              map[string]*chainWithKey // per-key counter accumulation
 	expireCount         uint64
 	postStabilizeUpdate uint64
+}
+
+// chainWithKey pairs a counterChain with the structured Key it belongs to,
+// so Snapshot can emit Samples without parsing the string map key.
+type chainWithKey struct {
+	key Key
+	*counterChain
 }
 
 // NewEngine creates an engine with the given configuration.
@@ -69,7 +76,7 @@ func NewEngine(cfg Config) *Engine {
 	return &Engine{
 		cfg:     cfg,
 		windows: make(map[time.Time]*window),
-		chains:  make(map[string]*counterChain),
+		chains:  make(map[string]*chainWithKey),
 	}
 }
 
@@ -181,7 +188,7 @@ func (e *Engine) emit(key Key, gauge uint64, bucket time.Time) []Sample {
 	sk := key.String()
 	ch := e.chains[sk]
 	if ch == nil {
-		ch = newCounterChain()
+		ch = &chainWithKey{key: key, counterChain: newCounterChain()}
 		e.chains[sk] = ch
 	}
 	emissions := ch.Set(bucket, gauge)
@@ -191,6 +198,23 @@ func (e *Engine) emit(key Key, gauge uint64, bucket time.Time) []Sample {
 	samples := make([]Sample, len(emissions))
 	for i, em := range emissions {
 		samples[i] = Sample{Key: key, Value: em.Counter, Timestamp: em.Bucket}
+	}
+	return samples
+}
+
+// Snapshot returns one Sample per active counter chain entry, reflecting
+// the current prefix-sum state without mutating the engine. Used after
+// backfill completes to push the final settled counter values in one shot.
+func (e *Engine) Snapshot() []Sample {
+	var samples []Sample
+	for _, ch := range e.chains {
+		for _, entry := range ch.entries {
+			samples = append(samples, Sample{
+				Key:       ch.key,
+				Value:     entry.counter,
+				Timestamp: entry.bucket,
+			})
+		}
 	}
 	return samples
 }

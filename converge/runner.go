@@ -15,15 +15,21 @@ import (
 //	│                    each tick                         │
 //	│                                                     │
 //	│  1. Live:  Fetch [now-lookback, now]                 │
-//	│           ──► Engine.Ingest ──► Sink.Push            │
-//	│           ──► Engine.Expire ──► Sink.Push            │
+//	│           ──► Engine.Ingest                          │
+//	│           (push suppressed until backfill completes) │
 //	│                                                     │
 //	│  2. Backfill (up to N calls):                        │
 //	│           Fetch [cursor, cursor+chunk]               │
-//	│           ──► Engine.Ingest ──► Sink.Push            │
+//	│           ──► Engine.Ingest (no push)                │
 //	│           advance cursor                             │
 //	│                                                     │
-//	│  3. On shutdown:                                     │
+//	│  3. Backfill complete:                               │
+//	│           Engine.Snapshot ──► Sink.Push (one shot)   │
+//	│                                                     │
+//	│  4. Steady state (backfill done):                    │
+//	│           Ingest ──► Sink.Push, Expire ──► Sink.Push │
+//	│                                                     │
+//	│  5. On shutdown:                                     │
 //	│           Engine.Flush ──► Sink.Push                 │
 //	└──────────────────────────────────────────────────────┘
 func Run(ctx context.Context, cfg Config, f Fetcher, s Sink) error {
@@ -34,6 +40,7 @@ func Run(ctx context.Context, cfg Config, f Fetcher, s Sink) error {
 
 	backfillCursor := time.Now().Add(-cfg.MaxBackfill).Truncate(time.Minute)
 	backfillDone := false
+	snapshotPushed := false
 
 	for {
 		select {
@@ -57,9 +64,15 @@ func Run(ctx context.Context, cfg Config, f Fetcher, s Sink) error {
 				log.WithError(err).Error("live fetch failed")
 			} else {
 				logObservationStats(log, obs, now)
-				pushSamples(ctx, s, eng.Ingest(obs))
+				samples := eng.Ingest(obs)
+				if backfillDone {
+					pushSamples(ctx, s, samples)
+				}
 			}
-			pushSamples(ctx, s, eng.Expire(now))
+			expireSamples := eng.Expire(now)
+			if backfillDone {
+				pushSamples(ctx, s, expireSamples)
+			}
 
 			st := eng.Stats()
 			log.WithField("post_stabilize_update_count", st.PostStabilizeUpdates).
@@ -73,27 +86,38 @@ func Run(ctx context.Context, cfg Config, f Fetcher, s Sink) error {
 			}
 			if cfg.BackfillCallsPerTick <= 0 {
 				backfillDone = true
-				continue
+			} else {
+				limit := now.Add(-cfg.Lookback)
+				for i := 0; i < cfg.BackfillCallsPerTick; i++ {
+					if !backfillCursor.Before(limit) {
+						backfillDone = true
+						log.Info("backfill complete")
+						break
+					}
+					end := backfillCursor.Add(cfg.BackfillChunk)
+					if end.After(limit) {
+						end = limit
+					}
+					obs, err := f.Fetch(ctx, backfillCursor, end)
+					if err != nil {
+						log.WithError(err).WithField("start", backfillCursor).WithField(
+							"end", end).Error("backfill fetch failed")
+						break // retry next tick
+					}
+					eng.Ingest(obs)
+					backfillCursor = end
+				}
 			}
-			limit := now.Add(-cfg.Lookback)
-			for i := 0; i < cfg.BackfillCallsPerTick; i++ {
-				if !backfillCursor.Before(limit) {
-					backfillDone = true
-					log.Info("backfill complete")
-					break
-				}
-				end := backfillCursor.Add(cfg.BackfillChunk)
-				if end.After(limit) {
-					end = limit
-				}
-				obs, err := f.Fetch(ctx, backfillCursor, end)
-				if err != nil {
-					log.WithError(err).WithField("start", backfillCursor).WithField(
-						"end", end).Error("backfill fetch failed")
-					break // retry next tick
-				}
-				pushSamples(ctx, s, eng.Ingest(obs))
-				backfillCursor = end
+
+			// Backfill just finished this tick: push the final
+			// state of every counter chain entry in one shot.
+			// During backfill, Ingest built up correct prefix sums
+			// but we suppressed pushes to avoid intermediate
+			// cascade artifacts in downstream rate() queries.
+			if backfillDone && !snapshotPushed {
+				snapshotPushed = true
+				log.Info("backfill done, pushing snapshot")
+				pushSamples(ctx, s, eng.Snapshot())
 			}
 		}
 	}
