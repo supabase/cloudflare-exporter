@@ -15,10 +15,7 @@ import (
 	"github.com/lablabs/cloudflare-exporter/converge"
 )
 
-const (
-	gqlQueryLimit = 9999
-	metricPrefix  = "cfp_zone_"
-)
+const gqlQueryLimit = 9999
 
 // Fetcher implements converge.Fetcher by querying Cloudflare's GraphQL API
 // for zone DNS analytics over a time range.
@@ -130,13 +127,13 @@ func flattenDNSGroups(z zoneData, zoneName string, enabled map[string]bool) []co
 			}
 			labelPairs := append([]string{"zone", zoneName}, extraLabels...)
 			obs = append(obs, converge.Observation{
-				Key:    converge.NewKey(metricPrefix+metric, labelPairs...),
+				Key:    converge.NewKey(metric, labelPairs...),
 				Value:  value,
 				Bucket: bucket,
 			})
 		}
 
-		o("dns_queries_total", g.Count, "response_code", g.Dimensions.ResponseCode, "query_type", g.Dimensions.QueryType)
+		o("cloudflare_zone_dns_queries_total", g.Count, "response_code", g.Dimensions.ResponseCode, "query_type", g.Dimensions.QueryType)
 	}
 
 	return obs
