@@ -35,37 +35,36 @@ func getConvergeMetricsList() []string {
 	return []string{}
 }
 
-// cfetchSuffixes maps canonical MetricName values to the short metric suffix
-// strings used by the cfetch package when building Observation keys. This is
-// the single place that bridges the two naming schemes.
-var cfetchdnsSuffixes = map[MetricName]string{
-	zoneDNSQueriesMetricName: "dns_queries_total",
+// cfetchMetricNames maps canonical MetricName values to the metric name
+// strings used by the cfetch package when building Observation keys.
+var cfetchdnsMetricNames = map[MetricName]string{
+	zoneDNSQueriesMetricName: string(zoneDNSQueriesMetricName),
 }
 
-var cfetchSuffixes = map[MetricName]string{
-	zoneRequestTotalMetricName:          "requests_total",
-	zoneRequestCachedMetricName:         "requests_cached",
-	zoneRequestSSLEncryptedMetricName:   "requests_ssl_encrypted",
-	zoneRequestContentTypeMetricName:    "requests_content_type",
-	zoneRequestCountryMetricName:        "requests_country",
-	zoneRequestHTTPStatusMetricName:     "requests_status",
-	zoneRequestBrowserMapMetricName:     "requests_browser_map",
-	zoneBandwidthTotalMetricName:        "bandwidth_total",
-	zoneBandwidthCachedMetricName:       "bandwidth_cached",
-	zoneBandwidthSSLEncryptedMetricName: "bandwidth_ssl_encrypted",
-	zoneBandwidthContentTypeMetricName:  "bandwidth_content_type",
-	zoneBandwidthCountryMetricName:      "bandwidth_country",
-	zoneThreatsTotalMetricName:          "threats_total",
-	zoneThreatsCountryMetricName:        "threats_country",
-	zoneThreatsTypeMetricName:           "threats_type",
-	zonePageviewsTotalMetricName:        "pageviews_total",
-	zoneUniquesTotalMetricName:          "uniques_total",
+var cfetchMetricNames = map[MetricName]string{
+	zoneRequestTotalMetricName:          string(zoneRequestTotalMetricName),
+	zoneRequestCachedMetricName:         string(zoneRequestCachedMetricName),
+	zoneRequestSSLEncryptedMetricName:   string(zoneRequestSSLEncryptedMetricName),
+	zoneRequestContentTypeMetricName:    string(zoneRequestContentTypeMetricName),
+	zoneRequestCountryMetricName:        string(zoneRequestCountryMetricName),
+	zoneRequestHTTPStatusMetricName:     string(zoneRequestHTTPStatusMetricName),
+	zoneRequestBrowserMapMetricName:     string(zoneRequestBrowserMapMetricName),
+	zoneBandwidthTotalMetricName:        string(zoneBandwidthTotalMetricName),
+	zoneBandwidthCachedMetricName:       string(zoneBandwidthCachedMetricName),
+	zoneBandwidthSSLEncryptedMetricName: string(zoneBandwidthSSLEncryptedMetricName),
+	zoneBandwidthContentTypeMetricName:  string(zoneBandwidthContentTypeMetricName),
+	zoneBandwidthCountryMetricName:      string(zoneBandwidthCountryMetricName),
+	zoneThreatsTotalMetricName:          string(zoneThreatsTotalMetricName),
+	zoneThreatsCountryMetricName:        string(zoneThreatsCountryMetricName),
+	zoneThreatsTypeMetricName:           string(zoneThreatsTypeMetricName),
+	zonePageviewsTotalMetricName:        string(zonePageviewsTotalMetricName),
+	zoneUniquesTotalMetricName:          string(zoneUniquesTotalMetricName),
 }
 
-// cfetchEnabledSet builds the set of cfetch metric suffixes to emit.
+// cfetchEnabledSet builds the set of cfetch metric names to emit.
 //
 // When metrics_converge_allowlist is set, only those metrics (intersected with
-// the main enabled set) are included. When unset, all suffixes whose canonical
+// the main enabled set) are included. When unset, all metrics whose canonical
 // MetricName appears in the main enabled set are included. Returns nil (emit
 // everything) when no filtering is needed.
 func cfetchEnabledSet(enabled MetricsMap) map[string]bool {
@@ -77,20 +76,20 @@ func cfetchEnabledSet(enabled MetricsMap) map[string]bool {
 	}
 
 	// Determine which canonical names to consider.
-	candidates := cfetchSuffixes
+	candidates := cfetchMetricNames
 	if len(convergeList) > 0 {
 		candidates = make(map[MetricName]string, len(convergeList))
 		for _, k := range convergeList {
-			if suffix, ok := cfetchSuffixes[MetricName(k)]; ok {
-				candidates[MetricName(k)] = suffix
+			if mn, ok := cfetchMetricNames[MetricName(k)]; ok {
+				candidates[MetricName(k)] = mn
 			}
 		}
 	}
 
 	out := make(map[string]bool, len(candidates))
-	for name, suffix := range candidates {
+	for name, mn := range candidates {
 		if _, ok := enabled[name]; ok {
-			out[suffix] = true
+			out[mn] = true
 		}
 	}
 	return out
@@ -108,8 +107,8 @@ func cfetchdnsEnabledSet() map[string]bool {
 	// Explicit allowlist: only emit DNS metrics named in it.
 	out := make(map[string]bool)
 	for _, k := range convergeList {
-		if suffix, ok := cfetchdnsSuffixes[MetricName(k)]; ok {
-			out[suffix] = true
+		if mn, ok := cfetchdnsMetricNames[MetricName(k)]; ok {
+			out[mn] = true
 		}
 	}
 	return out

@@ -15,10 +15,7 @@ import (
 	"github.com/lablabs/cloudflare-exporter/converge"
 )
 
-const (
-	gqlQueryLimit = 9999
-	metricPrefix  = "cfp_zone_"
-)
+const gqlQueryLimit = 9999
 
 // Fetcher implements converge.Fetcher by querying Cloudflare's GraphQL API
 // for zone traffic metrics over a time range.
@@ -192,50 +189,50 @@ func flattenHTTP1mGroups(z zoneData, zoneName string, enabled map[string]bool) [
 			}
 			labelPairs := append([]string{"zone", zoneName}, extraLabels...)
 			obs = append(obs, converge.Observation{
-				Key:    converge.NewKey(metricPrefix+metric, labelPairs...),
+				Key:    converge.NewKey(metric, labelPairs...),
 				Value:  value,
 				Bucket: bucket,
 			})
 		}
 
 		// Scalar metrics
-		o("requests_total", g.Sum.Requests)
-		o("requests_cached", g.Sum.CachedRequests)
-		o("requests_ssl_encrypted", g.Sum.EncryptedRequests)
-		o("bandwidth_total", g.Sum.Bytes)
-		o("bandwidth_cached", g.Sum.CachedBytes)
-		o("bandwidth_ssl_encrypted", g.Sum.EncryptedBytes)
-		o("pageviews_total", g.Sum.PageViews)
-		o("threats_total", g.Sum.Threats)
-		o("uniques_total", g.Uniq.Uniques)
+		o("cloudflare_zone_requests_total", g.Sum.Requests)
+		o("cloudflare_zone_requests_cached", g.Sum.CachedRequests)
+		o("cloudflare_zone_requests_ssl_encrypted", g.Sum.EncryptedRequests)
+		o("cloudflare_zone_bandwidth_total", g.Sum.Bytes)
+		o("cloudflare_zone_bandwidth_cached", g.Sum.CachedBytes)
+		o("cloudflare_zone_bandwidth_ssl_encrypted", g.Sum.EncryptedBytes)
+		o("cloudflare_zone_pageviews_total", g.Sum.PageViews)
+		o("cloudflare_zone_threats_total", g.Sum.Threats)
+		o("cloudflare_zone_uniques_total", g.Uniq.Uniques)
 
 		// By content type
 		for _, ct := range g.Sum.ContentType {
-			o("requests_content_type", ct.Requests, "content_type", ct.EdgeResponseContentType)
-			o("bandwidth_content_type", ct.Bytes, "content_type", ct.EdgeResponseContentType)
+			o("cloudflare_zone_requests_content_type", ct.Requests, "content_type", ct.EdgeResponseContentType)
+			o("cloudflare_zone_bandwidth_content_type", ct.Bytes, "content_type", ct.EdgeResponseContentType)
 		}
 
 		// By country
 		for _, c := range g.Sum.Country {
-			o("requests_country", c.Requests, "country", c.ClientCountryName)
-			o("bandwidth_country", c.Bytes, "country", c.ClientCountryName)
-			o("threats_country", c.Threats, "country", c.ClientCountryName)
+			o("cloudflare_zone_requests_country", c.Requests, "country", c.ClientCountryName)
+			o("cloudflare_zone_bandwidth_country", c.Bytes, "country", c.ClientCountryName)
+			o("cloudflare_zone_threats_country", c.Threats, "country", c.ClientCountryName)
 		}
 
 		// By status code
 		for _, s := range g.Sum.ResponseStatus {
-			o("requests_status", s.Requests, "status",
+			o("cloudflare_zone_requests_status", s.Requests, "status",
 				fmt.Sprintf("%d", s.EdgeResponseStatus))
 		}
 
 		// By browser
 		for _, b := range g.Sum.BrowserMap {
-			o("requests_browser_map", b.PageViews, "browser", b.UaBrowserFamily)
+			o("cloudflare_zone_requests_browser_map_page_views_count", b.PageViews, "browser", b.UaBrowserFamily)
 		}
 
 		// By threat type
 		for _, t := range g.Sum.ThreatPathing {
-			o("threats_type", t.Requests, "type", t.Name)
+			o("cloudflare_zone_threats_type", t.Requests, "type", t.Name)
 		}
 	}
 

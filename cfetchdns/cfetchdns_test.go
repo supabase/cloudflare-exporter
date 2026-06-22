@@ -69,7 +69,7 @@ func TestFetch(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, obs, 2)
 
-	assert.Equal(t, "cfp_zone_dns_queries_total", obs[0].Key.Name)
+	assert.Equal(t, "cloudflare_zone_dns_queries_total", obs[0].Key.Name)
 	assert.Equal(t, uint64(42), obs[0].Value)
 	assert.Equal(t, ts, obs[0].Bucket)
 
@@ -81,7 +81,7 @@ func TestFetch(t *testing.T) {
 	assert.Equal(t, "query_type", labels0[2].Name)
 	assert.Equal(t, "A", labels0[2].Value)
 
-	assert.Equal(t, "cfp_zone_dns_queries_total", obs[1].Key.Name)
+	assert.Equal(t, "cloudflare_zone_dns_queries_total", obs[1].Key.Name)
 	assert.Equal(t, uint64(7), obs[1].Value)
 	assert.Equal(t, ts, obs[1].Bucket)
 
@@ -137,7 +137,7 @@ func TestFetchEnabledFilter(t *testing.T) {
 	assert.Empty(t, obs)
 
 	// enabled map that includes dns_queries_total
-	f2 := New(&mockGQLClient{resp: resp}, zones, map[string]bool{"dns_queries_total": true})
+	f2 := New(&mockGQLClient{resp: resp}, zones, map[string]bool{"cloudflare_zone_dns_queries_total": true})
 	obs2, err := f2.Fetch(context.Background(), ts, ts.Add(time.Minute))
 	require.NoError(t, err)
 	assert.NotEmpty(t, obs2)
