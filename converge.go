@@ -63,31 +63,33 @@ var cfetchMetricNames = map[MetricName]string{
 
 // cfetchEnabledSet builds the set of cfetch metric names to emit.
 //
-// When metrics_converge_allowlist is set, only those metrics (intersected with
-// the main enabled set) are included. When unset, all metrics whose canonical
-// MetricName appears in the main enabled set are included. Returns nil (emit
-// everything) when no filtering is needed.
+// When metrics_converge_allowlist is set, it is used directly (no intersection
+// with the main metrics set, since the scrape and push paths are independent).
+// When unset, all metrics whose canonical MetricName appears in the main
+// enabled set are included. Returns nil (emit everything) when no filtering
+// is needed.
 func cfetchEnabledSet(enabled MetricsMap) map[string]bool {
 	convergeList := getConvergeMetricsList()
 
+	// Explicit converge allowlist: use it directly.
+	if len(convergeList) > 0 {
+		out := make(map[string]bool, len(convergeList))
+		for _, k := range convergeList {
+			if mn, ok := cfetchMetricNames[MetricName(k)]; ok {
+				out[mn] = true
+			}
+		}
+		return out
+	}
+
 	// No converge allowlist and full main metrics set: no filtering needed.
-	if len(convergeList) == 0 && len(enabled) == len(metricsMap) {
+	if len(enabled) == len(metricsMap) {
 		return nil
 	}
 
-	// Determine which canonical names to consider.
-	candidates := cfetchMetricNames
-	if len(convergeList) > 0 {
-		candidates = make(map[MetricName]string, len(convergeList))
-		for _, k := range convergeList {
-			if mn, ok := cfetchMetricNames[MetricName(k)]; ok {
-				candidates[MetricName(k)] = mn
-			}
-		}
-	}
-
-	out := make(map[string]bool, len(candidates))
-	for name, mn := range candidates {
+	// No converge allowlist, restricted main metrics: filter to intersection.
+	out := make(map[string]bool, len(cfetchMetricNames))
+	for name, mn := range cfetchMetricNames {
 		if _, ok := enabled[name]; ok {
 			out[mn] = true
 		}
@@ -154,10 +156,12 @@ func setupDNSConverger(ctx context.Context, zones []cfzones.Zone, gql *GraphQL) 
 }
 
 func setupConverger(ctx context.Context, convergeZones []cfzones.Zone, metrics MetricsMap, gql *GraphQL) (func(context.Context) error, error) {
+	enabled := cfetchEnabledSet(metrics)
+	log.WithField("enabled_count", len(enabled)).WithField("enabled", enabled).Info("cfetch enabled set")
 	fetcher := cfetch.New(
 		&gqlAdapter{gql},
 		filterExcludedZones(convergeZones, getExcludedZones()),
-		cfetchEnabledSet(metrics),
+		enabled,
 	)
 	return setupConvergerWithFetcher(ctx, "converge", fetcher)
 }
