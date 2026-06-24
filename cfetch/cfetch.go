@@ -34,7 +34,7 @@ func New(client cfgql.GQLClient, zones []cfzones.Zone, enabled map[string]bool) 
 }
 
 func (f *Fetcher) Fetch(ctx context.Context, start, end time.Time) ([]converge.Observation, error) {
-	return cfgql.FetchZones(ctx, f.zones, "cfetch", func(ctx context.Context, chunk []cfzones.Zone, ids []string) ([]converge.Observation, error) {
+	obs, err := cfgql.FetchZones(ctx, f.zones, "cfetch", func(ctx context.Context, chunk []cfzones.Zone, ids []string) ([]converge.Observation, error) {
 		resp, err := f.fetchRange(ctx, ids, start, end)
 		if err != nil {
 			return nil, err
@@ -45,6 +45,26 @@ func (f *Fetcher) Fetch(ctx context.Context, start, end time.Time) ([]converge.O
 		}
 		return obs, nil
 	})
+	if err != nil {
+		return nil, err
+	}
+
+	adaptiveObs, err := cfgql.FetchZones(ctx, f.zones, "cfetch-adaptive", func(ctx context.Context, chunk []cfzones.Zone, ids []string) ([]converge.Observation, error) {
+		resp, err := f.fetchAdaptiveRange(ctx, ids, start, end)
+		if err != nil {
+			return nil, err
+		}
+		var obs []converge.Observation
+		for _, z := range resp.Viewer.Zones {
+			obs = append(obs, flattenHTTPAdaptiveGroups(z, cfgql.FindZoneName(chunk, z.ZoneTag), f.enabled)...)
+		}
+		return obs, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return append(obs, adaptiveObs...), nil
 }
 
 // --- GraphQL query and response types ----------------------------------------
@@ -170,6 +190,84 @@ func (f *Fetcher) fetchRange(ctx context.Context, zoneIDs []string, start, end t
 	}
 
 	return &resp, nil
+}
+
+// --- Adaptive groups (httpRequestsAdaptiveGroups) ----------------------------
+
+type adaptiveRangeResponse struct {
+	Viewer struct {
+		Zones []adaptiveZoneData `json:"zones"`
+	} `json:"viewer"`
+}
+
+type adaptiveZoneData struct {
+	ZoneTag            string              `json:"zoneTag"`
+	HTTPAdaptiveGroups []httpAdaptiveGroup `json:"httpRequestsAdaptiveGroups"`
+}
+
+type httpAdaptiveGroup struct {
+	Count      uint64 `json:"count"`
+	Dimensions struct {
+		DatetimeMinute     string `json:"datetimeMinute"`
+		EdgeResponseStatus int    `json:"edgeResponseStatus"`
+	} `json:"dimensions"`
+}
+
+const adaptiveRangeQuery = `
+query ($zoneIDs: [String!], $startTime: Time!, $endTime: Time!, $limit: Int!) {
+	viewer {
+		zones(filter: { zoneTag_in: $zoneIDs }) {
+			zoneTag
+			httpRequestsAdaptiveGroups(limit: $limit, filter: { datetime_geq: $startTime, datetime_lt: $endTime }, orderBy: [datetimeMinute_ASC]) {
+				count
+				dimensions {
+					datetimeMinute
+					edgeResponseStatus
+				}
+			}
+		}
+	}
+}
+`
+
+func (f *Fetcher) fetchAdaptiveRange(ctx context.Context, zoneIDs []string, start, end time.Time) (*adaptiveRangeResponse, error) {
+	req := &cfgql.GQLRequest{
+		Query: adaptiveRangeQuery,
+		Variables: map[string]any{
+			"zoneIDs":   zoneIDs,
+			"startTime": start.UTC().Format(time.RFC3339),
+			"endTime":   end.UTC().Format(time.RFC3339),
+			"limit":     gqlQueryLimit,
+		},
+	}
+
+	var resp adaptiveRangeResponse
+	if err := f.client.RunGQL(ctx, req, &resp); err != nil {
+		return nil, fmt.Errorf("fetchZoneAdaptiveRange: %w", err)
+	}
+
+	return &resp, nil
+}
+
+func flattenHTTPAdaptiveGroups(z adaptiveZoneData, zoneName string, enabled map[string]bool) []converge.Observation {
+	const metric = "cloudflare_zone_requests_status_v2"
+	if enabled != nil && !enabled[metric] {
+		return nil
+	}
+
+	var obs []converge.Observation
+	for _, g := range z.HTTPAdaptiveGroups {
+		bucket, err := time.Parse(time.RFC3339, g.Dimensions.DatetimeMinute)
+		if err != nil {
+			continue
+		}
+		obs = append(obs, converge.Observation{
+			Key:    converge.NewKey(metric, "zone", zoneName, "status", fmt.Sprintf("%d", g.Dimensions.EdgeResponseStatus)),
+			Value:  g.Count,
+			Bucket: bucket,
+		})
+	}
+	return obs
 }
 
 // --- Flatten -----------------------------------------------------------------

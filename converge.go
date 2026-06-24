@@ -48,6 +48,7 @@ var cfetchMetricNames = map[MetricName]string{
 	zoneRequestContentTypeMetricName:    string(zoneRequestContentTypeMetricName),
 	zoneRequestCountryMetricName:        string(zoneRequestCountryMetricName),
 	zoneRequestHTTPStatusMetricName:     string(zoneRequestHTTPStatusMetricName),
+	zoneRequestHTTPStatusV2MetricName:   string(zoneRequestHTTPStatusV2MetricName),
 	zoneRequestBrowserMapMetricName:     string(zoneRequestBrowserMapMetricName),
 	zoneBandwidthTotalMetricName:        string(zoneBandwidthTotalMetricName),
 	zoneBandwidthCachedMetricName:       string(zoneBandwidthCachedMetricName),
