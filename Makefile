@@ -1,4 +1,4 @@
-.PHONY: build fmt fmt-check lint clean test check help
+.PHONY: build fmt fmt-check lint clean test check help integration-test integration-test-full
 .DEFAULT_GOAL := help
 
 # Build the binary
@@ -49,6 +49,17 @@ pr-tests: clean fmt-check lint build test
 clean:
 	rm -f cloudflare_exporter venom*.log basic_tests.* pprof_cpu*
 
+# Run integration tests (requires ~/.cloudflare_token and CF_TEST_ZONE_ID)
+integration-test:
+	@test -n "$(CF_TEST_ZONE_ID)" || (echo "error: CF_TEST_ZONE_ID is required (e.g. make integration-test CF_TEST_ZONE_ID=abc123)"; exit 1)
+	CF_API_TOKEN="$$(cat ~/.cloudflare_token)" CF_TEST_ZONE_ID="$(CF_TEST_ZONE_ID)" go test ./cfetch/... -count=1 -v -run TestIntegration
+
+# Run integration tests including backfill+push (requires VM_PUSH_ENDPOINT)
+integration-test-full:
+	@test -n "$(CF_TEST_ZONE_ID)" || (echo "error: CF_TEST_ZONE_ID is required"; exit 1)
+	@test -n "$(VM_PUSH_ENDPOINT)" || (echo "error: VM_PUSH_ENDPOINT is required (e.g. http://localhost:8428/api/v1/write)"; exit 1)
+	CF_API_TOKEN="$$(cat ~/.cloudflare_token)" CF_TEST_ZONE_ID="$(CF_TEST_ZONE_ID)" VM_PUSH_ENDPOINT="$(VM_PUSH_ENDPOINT)" VM_PUSH_USER="$(VM_PUSH_USER)" VM_PUSH_PASSWORD="$(VM_PUSH_PASSWORD)" go test ./. ./cfetch/... -count=1 -v -run TestIntegration
+
 # Run end-to-end tests
 test:
 	./run_e2e.sh
@@ -70,6 +81,8 @@ help:
 	@echo "Common workflows:"
 	@echo "  make fmt && make build  - Format code and build"
 	@echo "  make check             - Run all code quality checks"
+	@echo "  make integration-test       - Run cfetch integration tests (needs ~/.cloudflare_token)"
+	@echo "  make integration-test-full  - Run full pipeline tests (needs VM_PUSH_ENDPOINT too)"
 	@echo "  make unit-tests        - Run unit tests only"
 	@echo "  make pr-tests          - Run full test suite for PR/release"
 	@echo "  make clean build       - Clean and rebuild"

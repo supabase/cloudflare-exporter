@@ -104,6 +104,8 @@ func Run(ctx context.Context, cfg Config, f Fetcher, s Sink) error {
 							"end", end).Error("backfill fetch failed")
 						break // retry next tick
 					}
+					log.WithField("start", backfillCursor).WithField("end", end).
+						WithField("observations", len(obs)).Info("backfill fetch")
 					eng.Ingest(obs)
 					backfillCursor = end
 				}
@@ -118,6 +120,9 @@ func Run(ctx context.Context, cfg Config, f Fetcher, s Sink) error {
 				snapshotPushed = true
 				log.Info("backfill done, pushing snapshot")
 				pushSamples(ctx, s, eng.Snapshot())
+				if cfg.BackfillDone != nil {
+					close(cfg.BackfillDone)
+				}
 			}
 		}
 	}
