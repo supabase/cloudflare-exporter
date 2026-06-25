@@ -1,0 +1,87 @@
+{
+  "seq": 2,
+  "start": "2026-06-24T11:14:00-07:00",
+  "end": "2026-06-24T11:24:00-07:00",
+  "observations": [
+    {
+      "name": "cloudflare_zone_requests_total",
+      "labels": {
+        "zone": "fixture-recording"
+      },
+      "value": 34966216,
+      "bucket": "2026-06-24T18:14:00Z"
+    },
+    {
+      "name": "cloudflare_zone_requests_total",
+      "labels": {
+        "zone": "fixture-recording"
+      },
+      "value": 34003104,
+      "bucket": "2026-06-24T18:19:00Z"
+    },
+    {
+      "name": "cloudflare_zone_requests_total",
+      "labels": {
+        "zone": "fixture-recording"
+      },
+      "value": 34079980,
+      "bucket": "2026-06-24T18:23:00Z"
+    },
+    {
+      "name": "cloudflare_zone_requests_total",
+      "labels": {
+        "zone": "fixture-recording"
+      },
+      "value": 40985723,
+      "bucket": "2026-06-24T18:20:00Z"
+    },
+    {
+      "name": "cloudflare_zone_requests_total",
+      "labels": {
+        "zone": "fixture-recording"
+      },
+      "value": 35625574,
+      "bucket": "2026-06-24T18:17:00Z"
+    },
+    {
+      "name": "cloudflare_zone_requests_total",
+      "labels": {
+        "zone": "fixture-recording"
+      },
+      "value": 37484964,
+      "bucket": "2026-06-24T18:16:00Z"
+    },
+    {
+      "name": "cloudflare_zone_requests_total",
+      "labels": {
+        "zone": "fixture-recording"
+      },
+      "value": 35292393,
+      "bucket": "2026-06-24T18:22:00Z"
+    },
+    {
+      "name": "cloudflare_zone_requests_total",
+      "labels": {
+        "zone": "fixture-recording"
+      },
+      "value": 43786123,
+      "bucket": "2026-06-24T18:15:00Z"
+    },
+    {
+      "name": "cloudflare_zone_requests_total",
+      "labels": {
+        "zone": "fixture-recording"
+      },
+      "value": 35725854,
+      "bucket": "2026-06-24T18:18:00Z"
+    },
+    {
+      "name": "cloudflare_zone_requests_total",
+      "labels": {
+        "zone": "fixture-recording"
+      },
+      "value": 35769787,
+      "bucket": "2026-06-24T18:21:00Z"
+    }
+  ]
+}

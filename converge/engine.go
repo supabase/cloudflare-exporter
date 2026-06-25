@@ -19,6 +19,9 @@ type Config struct {
 	MaxBackfill          time.Duration // max historical backfill on startup
 	BackfillChunk        time.Duration // time range per backfill Fetch call
 	BackfillCallsPerTick int           // max Fetch calls for backfill per tick
+
+	// Testing: optional channel closed after backfill snapshot is pushed.
+	BackfillDone chan<- struct{}
 }
 
 // DefaultConfig returns a config tuned for convergence with reasonable defaults.
