@@ -94,6 +94,13 @@ type Pinger interface {
 	Ping(ctx context.Context) error
 }
 
+// ChainSeeder is an optional interface a Sink can implement to provide
+// last known counter values for seeding chain bases on startup. This
+// prevents counter resets when the exporter restarts.
+type ChainSeeder interface {
+	LastValues(ctx context.Context, selector string, lookback time.Duration) (map[string]Sample, error)
+}
+
 // Stats provides a snapshot of engine state for monitoring.
 type Stats struct {
 	OpenWindows          int

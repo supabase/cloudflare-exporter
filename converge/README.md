@@ -191,6 +191,58 @@ it uses. The engine never imports or references external packages.
   └──────────────┘             └──────────────┘
 ```
 
+## VictoriaMetrics dedup and counter restarts
+
+The engine emits cumulative counters (prefix sums). On restart, the chain
+base resets to 0, so counter values at a given timestamp will differ between
+the old and new process.
+
+VictoriaMetrics deduplication (`-dedup.minScrapeInterval`) merges duplicate
+timestamps during storage compaction, but **keeps the highest value**, not
+the last written value. This means:
+
+1. Old deploy pushes counter value `50,000,000` at timestamp `17:05`
+2. New deploy restarts, base resets, pushes `35,000` at `17:05`
+3. VM keeps `50,000,000` (the higher value). The old data survives.
+
+This has two implications:
+
+**Spike artifacts are permanent.** If intermediate prefix sum states leak
+to VM during backfill (the cascade bug), those inflated counter values
+are higher than the correct values and will never be overwritten by
+subsequent pushes. The only remedy is `delete_series` for the affected
+time range.
+
+**Correct values are also permanent.** Once the engine pushes the right
+counter values (via the suppress and snapshot approach), those values are
+stable. A restart that pushes lower values won't corrupt them.
+
+The suppress and snapshot fix prevents spikes from being written in the
+first place, which is the correct solution given VM's "highest value wins"
+dedup semantics. Relying on dedup to overwrite bad data does not work.
+
+### Chain base seeding
+
+To prevent counter resets across restarts entirely, the engine supports
+seeding chain bases from the sink's last known values. On startup, if
+the sink implements the `ChainSeeder` interface, the runner queries VM
+for the last value of each series within the `MaxBackfill` window and
+calls `Engine.SeedChainBase(key, value)` for each result.
+
+This means the first counter emitted after restart is `previous_last + gauge`
+rather than `0 + gauge`. Since VM keeps the highest value on dedup, the
+new values are always >= the old ones (monotonic continuation), so:
+
+1. No counter reset visible to `rate()`.
+2. No conflict with existing data in VM.
+3. If VM is unreachable at startup, seeding is skipped with a warning
+   and the engine falls back to base=0 (same as pre-seed behavior).
+
+The seed query uses `last_over_time({selector}[MaxBackfill])` against
+the VM query endpoint, derived from the write endpoint.
+
+Reference: [VictoriaMetrics Storage, Retention, Merging, and Deduplication](https://victoriametrics.com/blog/vmstorage-retention-merging-deduplication/)
+
 ## File layout
 
 ```
@@ -201,4 +253,6 @@ converge/
   engine.go      Engine (exported), Config, NewEngine, Ingest/Expire/Flush
   runner.go      Run() convenience loop (exported)
   engine_test.go
+  spike_test.go  regression test for counter cascade spikes (uses testdata/)
+  testdata/      recorded CF fetch fixtures for spike reproduction
 ```

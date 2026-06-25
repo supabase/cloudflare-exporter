@@ -143,7 +143,7 @@ func setupConvergerWithFetcher(ctx context.Context, component string, fetcher co
 	return func(ctx context.Context) error {
 		return converge.Run(
 			converge.ContextWithLogger(ctx, log.WithField("component", component)),
-			cfg, fetcher, sink,
+			cfg, fetcher, sink, nil,
 		)
 	}, nil
 }
