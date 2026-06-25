@@ -97,77 +97,80 @@ func computeRates(samples []Sample) []float64 {
 	return rates
 }
 
-// TestSpikeDetectionFromFixtures replays recorded Cloudflare fetch data
-// through the engine simulating the runner's live + backfill pattern, then
-// checks for rate spikes in the pushed samples.
-//
-// The fixture data was captured from a real run against supabase.co.
-// fetch_000 is the live fetch, fetch_001..006 are backfill chunks.
-//
-// On the current (pre-fix) code path this test SHOULD detect spikes,
-// demonstrating the counter chain cascade bug. After the evictChains
-// fix is applied, the test should pass.
-func TestSpikeDetectionFromFixtures(t *testing.T) {
+// TestSpikeDetection_PreFix demonstrates the counter chain cascade bug.
+// It simulates the old runner behavior where every Ingest result was
+// pushed immediately. Each backfill chunk shifts earlier buckets'
+// prefix sums, and the intermediate counter values leak to the sink.
+func TestSpikeDetection_PreFix(t *testing.T) {
 	fixtures := loadFixtures(t)
-	require.GreaterOrEqual(t, len(fixtures), 2, "need at least a live fetch and one backfill chunk")
-
-	liveFixture := fixtures[0]
-	backfillFixtures := fixtures[1:]
-
-	t.Logf("live: %d obs [%s, %s]", len(liveFixture.Observations),
-		liveFixture.Start.Format(time.RFC3339), liveFixture.End.Format(time.RFC3339))
-	for i, bf := range backfillFixtures {
-		t.Logf("backfill %d: %d obs [%s, %s]", i, len(bf.Observations),
-			bf.Start.Format(time.RFC3339), bf.End.Format(time.RFC3339))
-	}
-
-	// Use the live fetch end time as "now" for the simulation.
+	liveFixture, backfillFixtures := fixtures[0], fixtures[1:]
 	now := liveFixture.End
 
 	eng := NewEngine(Config{
-		Threshold:            1,
-		WindowTTL:            15 * time.Minute,
-		PollInterval:         10 * time.Second,
-		Lookback:             10 * time.Minute,
-		MaxBackfill:          60 * time.Minute,
-		BackfillChunk:        10 * time.Minute,
-		BackfillCallsPerTick: 10,
+		Threshold: 1,
+		WindowTTL: 15 * time.Minute,
 	})
 
-	// Simulate the pre-fix runner behavior where every Ingest result was
-	// immediately pushed. This is what causes the cascade: each backfill
-	// chunk shifts earlier buckets' prefix sums, and the intermediate
-	// counter values get pushed to the sink. The sink (VM) then sees the
-	// counter at a given timestamp jump repeatedly, which rate()
-	// interprets as enormous throughput spikes.
 	var samples []Sample
-
-	// Tick 1: live fetch — pushed immediately (pre-fix behavior).
 	samples = append(samples, eng.Ingest(fixtureToObservations(liveFixture))...)
-	samples = append(samples, eng.Expire(now)...)
-
-	// Tick 1: backfill chunks — each push leaks intermediate prefix sums.
+	samples = append(samples, eng.Expire(now, true)...)
 	for _, bf := range backfillFixtures {
 		samples = append(samples, eng.Ingest(fixtureToObservations(bf))...)
 	}
 
-	require.NotEmpty(t, samples, "should have pushed samples")
-	t.Logf("snapshot: %d samples", len(samples))
-
-	// Compute rates and check for spikes.
+	require.NotEmpty(t, samples)
 	rates := computeRates(samples)
-	require.NotEmpty(t, rates, "no rate values computed")
+	require.NotEmpty(t, rates)
+
+	sort.Float64s(rates)
+	median := rates[len(rates)/2]
+	maxRate := rates[len(rates)-1]
+
+	t.Logf("PRE-FIX: %d samples, %d rates, median=%.0f max=%.0f (%.1fx)",
+		len(samples), len(rates), median, maxRate, maxRate/median)
+
+	// This SHOULD spike. If it doesn't, the fixture data doesn't reproduce the bug.
+	assert.Greater(t, maxRate, median*10,
+		"expected spike in pre-fix simulation; fixture data may not reproduce the bug")
+}
+
+// TestSpikeDetection_PostFix verifies the fix: during backfill, Expire
+// preserves chain entries (evictChains=false), samples are suppressed,
+// and the final Snapshot produces clean monotonic counters with no spikes.
+func TestSpikeDetection_PostFix(t *testing.T) {
+	fixtures := loadFixtures(t)
+	liveFixture, backfillFixtures := fixtures[0], fixtures[1:]
+	now := liveFixture.End
+
+	eng := NewEngine(Config{
+		Threshold: 1,
+		WindowTTL: 15 * time.Minute,
+	})
+
+	// Simulate fixed runner: ingest everything, suppress pushes,
+	// expire with evictChains=false to preserve chain entries.
+	eng.Ingest(fixtureToObservations(liveFixture))
+	eng.Expire(now, false) // preserve chain entries
+
+	for _, bf := range backfillFixtures {
+		eng.Ingest(fixtureToObservations(bf))
+	}
+
+	// Snapshot captures the final settled state.
+	samples := eng.Snapshot()
+	require.NotEmpty(t, samples)
+
+	rates := computeRates(samples)
+	require.NotEmpty(t, rates)
 
 	sort.Float64s(rates)
 	median := rates[len(rates)/2]
 	maxRate := rates[len(rates)-1]
 	spikeMultiplier := 10.0
 
-	t.Logf("rate samples:    %d", len(rates))
-	t.Logf("median rate:     %.2f req/min", median)
-	t.Logf("max rate:        %.2f req/min", maxRate)
-	t.Logf("max/median:      %.1fx", maxRate/median)
-	t.Logf("spike threshold: %.2f req/min (%.0fx median)", median*spikeMultiplier, spikeMultiplier)
+	t.Logf("POST-FIX: %d samples, %d rates, median=%.0f max=%.0f (%.1fx)",
+		len(samples), len(rates), median, maxRate, maxRate/median)
+	t.Logf("spike threshold: %.0f (%.0fx median)", median*spikeMultiplier, spikeMultiplier)
 
 	assert.LessOrEqual(t, maxRate, median*spikeMultiplier,
 		fmt.Sprintf("rate spike detected: max %.2f exceeds %.0fx median (%.2f); "+

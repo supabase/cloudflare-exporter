@@ -100,6 +100,8 @@ type Stats struct {
 	TrackerCount         int
 	ExpireCount          uint64
 	PostStabilizeUpdates uint64
+	OldestBucket         time.Time // earliest bucket ever ingested
+	NewestBucket         time.Time // latest bucket ever ingested
 }
 
 func (s Stats) String() string {

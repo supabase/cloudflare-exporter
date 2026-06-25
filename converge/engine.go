@@ -62,6 +62,8 @@ type Engine struct {
 	chains              map[string]*chainWithKey // per-key counter accumulation
 	expireCount         uint64
 	postStabilizeUpdate uint64
+	oldestBucket        time.Time // low water mark: earliest bucket ever ingested
+	newestBucket        time.Time // high water mark: latest bucket ever ingested
 }
 
 // chainWithKey pairs a counterChain with the structured Key it belongs to,
@@ -89,6 +91,12 @@ func NewEngine(cfg Config) *Engine {
 func (e *Engine) Ingest(obs []Observation) []Sample {
 	var ready []Sample
 	for _, o := range obs {
+		if e.oldestBucket.IsZero() || o.Bucket.Before(e.oldestBucket) {
+			e.oldestBucket = o.Bucket
+		}
+		if o.Bucket.After(e.newestBucket) {
+			e.newestBucket = o.Bucket
+		}
 		w := e.windows[o.Bucket]
 		if w == nil {
 			w = newWindow(o.Bucket)
@@ -115,9 +123,12 @@ func (e *Engine) Ingest(obs []Observation) []Sample {
 
 // Expire checks all open windows against WindowTTL. Windows past their TTL
 // have ALL trackers' latest values fed to the counter chains before eviction,
-// capturing any post-stabilization drift. The bucket is then evicted from
-// each chain, folding its gauge into the chain's base.
-func (e *Engine) Expire(now time.Time) []Sample {
+// capturing any post-stabilization drift.
+//
+// When evictChains is true, the bucket is also evicted from each counter
+// chain, folding its gauge into the chain's base. Pass false during backfill
+// to free tracker memory while preserving chain entries for Snapshot.
+func (e *Engine) Expire(now time.Time, evictChains bool) []Sample {
 	// Collect expired buckets and process them in ascending time order.
 	// counterChain.Evict only succeeds on the oldest entry, so
 	// nondeterministic map iteration would cause evictions to silently
@@ -149,7 +160,9 @@ func (e *Engine) Expire(now time.Time) []Sample {
 		if hadUnpushed {
 			e.expireCount++
 		}
-		e.evictBucket(w)
+		if evictChains {
+			e.evictBucket(w)
+		}
 		delete(e.windows, bucket)
 	}
 	return samples
@@ -181,6 +194,8 @@ func (e *Engine) Stats() Stats {
 		TrackerCount:         trackers,
 		ExpireCount:          e.expireCount,
 		PostStabilizeUpdates: e.postStabilizeUpdate,
+		OldestBucket:         e.oldestBucket,
+		NewestBucket:         e.newestBucket,
 	}
 }
 
@@ -220,6 +235,19 @@ func (e *Engine) Snapshot() []Sample {
 		}
 	}
 	return samples
+}
+
+// EvictStaleChains evicts all counter chain entries whose bucket is older
+// than WindowTTL. Used after Snapshot to clean up chain entries that were
+// preserved during backfill (when Expire ran with evictChains=false).
+func (e *Engine) EvictStaleChains(now time.Time) {
+	cutoff := now.Add(-e.cfg.WindowTTL)
+	for _, ch := range e.chains {
+		for len(ch.entries) > 0 && ch.entries[0].bucket.Before(cutoff) {
+			ch.base += ch.entries[0].gauge
+			ch.entries = ch.entries[1:]
+		}
+	}
 }
 
 // evictBucket removes the expired bucket from every counter chain that

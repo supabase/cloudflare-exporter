@@ -69,7 +69,9 @@ func Run(ctx context.Context, cfg Config, f Fetcher, s Sink) error {
 					pushSamples(ctx, s, samples)
 				}
 			}
-			expireSamples := eng.Expire(now)
+			// During backfill, expire windows to free tracker memory
+			// but preserve counter chain entries for the snapshot.
+			expireSamples := eng.Expire(now, backfillDone)
 			if backfillDone {
 				pushSamples(ctx, s, expireSamples)
 			}
@@ -118,8 +120,15 @@ func Run(ctx context.Context, cfg Config, f Fetcher, s Sink) error {
 			// cascade artifacts in downstream rate() queries.
 			if backfillDone && !snapshotPushed {
 				snapshotPushed = true
-				log.Info("backfill done, pushing snapshot")
+				st := eng.Stats()
+				log.WithField("oldest_bucket", st.OldestBucket.Format(time.RFC3339)).
+					WithField("newest_bucket", st.NewestBucket.Format(time.RFC3339)).
+					Info("backfill done, pushing snapshot")
 				pushSamples(ctx, s, eng.Snapshot())
+				// Chain eviction was deferred during backfill.
+				// Now that the snapshot captured all entries,
+				// evict stale buckets to free chain memory.
+				eng.EvictStaleChains(now)
 				if cfg.BackfillDone != nil {
 					close(cfg.BackfillDone)
 				}

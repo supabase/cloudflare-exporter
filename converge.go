@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	cfzones "github.com/cloudflare/cloudflare-go/v4/zones"
@@ -159,6 +160,7 @@ func setupDNSConverger(ctx context.Context, zones []cfzones.Zone, gql *GraphQL) 
 func setupConverger(ctx context.Context, convergeZones []cfzones.Zone, metrics MetricsMap, gql *GraphQL) (func(context.Context) error, error) {
 	enabled := cfetchEnabledSet(metrics)
 	log.WithField("enabled_count", len(enabled)).WithField("enabled", enabled).Info("cfetch enabled set")
+	log.WithField("config", fmt.Sprintf("%+v", convergeConfig())).Info("converge config")
 	fetcher := cfetch.New(
 		&gqlAdapter{gql},
 		filterExcludedZones(convergeZones, getExcludedZones()),

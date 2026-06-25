@@ -89,11 +89,11 @@ func TestExpireTTL(t *testing.T) {
 	assert.Equal(t, 1, e.Stats().OpenWindows)
 
 	// Not yet expired (bucket + 4m < bucket + TTL).
-	assert.Empty(t, e.Expire(t0.Add(4*time.Minute)))
+	assert.Empty(t, e.Expire(t0.Add(4*time.Minute), true))
 	assert.Equal(t, 1, e.Stats().OpenWindows)
 
 	// TTL exceeded (bucket + 6m > bucket + 5m TTL).
-	samples := e.Expire(t0.Add(6 * time.Minute))
+	samples := e.Expire(t0.Add(6*time.Minute), true)
 	require.Len(t, samples, 1)
 	assert.Equal(t, uint64(100), samples[0].Value)
 	assert.Equal(t, 0, e.Stats().OpenWindows)
@@ -109,7 +109,7 @@ func TestExpireTTLNoPushIfAlreadyPushed(t *testing.T) {
 	require.Len(t, samples, 1)
 
 	// TTL expires: window was already pushed, no duplicate.
-	expired := e.Expire(t0.Add(6 * time.Minute))
+	expired := e.Expire(t0.Add(6*time.Minute), true)
 	assert.Empty(t, expired)
 	assert.Equal(t, 0, e.Stats().OpenWindows)
 }
@@ -123,11 +123,11 @@ func TestExpireTTLCleansPushedWindows(t *testing.T) {
 	e.Ingest([]Observation{obs("req", 100, t0)})
 
 	// Window stays open before TTL, accepting further observations.
-	e.Expire(t0.Add(3 * time.Minute))
+	e.Expire(t0.Add(3*time.Minute), true)
 	assert.Equal(t, 1, e.Stats().OpenWindows)
 
 	// TTL exceeded: window removed, no duplicate push.
-	expired := e.Expire(t0.Add(6 * time.Minute))
+	expired := e.Expire(t0.Add(6*time.Minute), true)
 	assert.Empty(t, expired)
 	assert.Equal(t, 0, e.Stats().OpenWindows)
 }
@@ -185,7 +185,7 @@ func TestExpireDropsUnstabilizedSeriesWhenWindowPartiallyPushed(t *testing.T) {
 	// Now TTL expires. "bytes" should be force-flushed with its last observed
 	// value (7000), but the current code skips the flush because w.pushed is
 	// already true.
-	expired := e.Expire(t0.Add(6 * time.Minute))
+	expired := e.Expire(t0.Add(6*time.Minute), true)
 
 	// This assertion captures the expected correct behavior: "bytes" should
 	// appear in the expired samples with its last observed value.
@@ -254,7 +254,7 @@ func TestExpireMultipleWindowsEvictInOrder(t *testing.T) {
 	e.Ingest([]Observation{obs("req", 300, t2)}) // counter: 600
 
 	// Expire all three at once (now = t0 + 8m, all are > 5m old).
-	expired := e.Expire(t0.Add(8 * time.Minute))
+	expired := e.Expire(t0.Add(8*time.Minute), true)
 	assert.Empty(t, expired) // all were already pushed
 
 	// All three should have been evicted from the chain. The base should
@@ -279,11 +279,11 @@ func TestExpireCounterEviction(t *testing.T) {
 
 	// Expire t0 (age 6m > TTL 5m). chain.Set(t0, 100) is a no-op (unchanged),
 	// then evict folds 100 into base.
-	expired := e.Expire(t0.Add(6 * time.Minute))
+	expired := e.Expire(t0.Add(6*time.Minute), true)
 	assert.Empty(t, expired) // no new emissions, value unchanged
 
 	// t1 also expires at 6m30s.
-	expired = e.Expire(t0.Add(6*time.Minute + 30*time.Second))
+	expired = e.Expire(t0.Add(6*time.Minute+30*time.Second), true)
 	assert.Empty(t, expired) // same, already pushed
 
 	// New bucket after both evictions should accumulate from base.
@@ -312,7 +312,7 @@ func TestExpireCounterCapturesPostStabilizationDrift(t *testing.T) {
 	e.Ingest([]Observation{obs("req", 115, t0)})
 
 	// On expire, the engine feeds currentValue (115) to the chain.
-	expired := e.Expire(t0.Add(6 * time.Minute))
+	expired := e.Expire(t0.Add(6*time.Minute), true)
 	require.Len(t, expired, 1)
 	assert.Equal(t, uint64(115), expired[0].Value) // updated counter
 }
