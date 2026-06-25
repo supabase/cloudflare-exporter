@@ -66,7 +66,12 @@ type dnsGroup struct {
 		DatetimeMinute string `json:"datetimeMinute"`
 		ResponseCode   string `json:"responseCode"`
 		QueryType      string `json:"queryType"`
+		IpVersion      string `json:"ipVersion"`
 	} `json:"dimensions"`
+	Sum struct {
+		CountStale                uint64 `json:"countStale"`
+		CountNotCachedAndNotStale uint64 `json:"countNotCachedAndNotStale"`
+	} `json:"sum"`
 }
 
 const rangeQuery = `
@@ -84,6 +89,11 @@ query ($zoneIDs: [String!], $startTime: Time!, $endTime: Time!, $limit: Int!) {
 					datetimeMinute
 					responseCode
 					queryType
+					ipVersion
+				}
+				sum {
+					countStale
+					countNotCachedAndNotStale
 				}
 			}
 		}
@@ -115,25 +125,46 @@ func (f *Fetcher) fetchRange(ctx context.Context, zoneIDs []string, start, end t
 func flattenDNSGroups(z zoneData, zoneName string, enabled map[string]bool) []converge.Observation {
 	var obs []converge.Observation
 
+	emit := func(metric string, value uint64, bucket time.Time, extraLabels ...string) {
+		if enabled != nil && !enabled[metric] {
+			return
+		}
+		labelPairs := append([]string{"zone", zoneName}, extraLabels...)
+		obs = append(obs, converge.Observation{
+			Key:    converge.NewKey(metric, labelPairs...),
+			Value:  value,
+			Bucket: bucket,
+		})
+	}
+
+	type bucketAgg struct {
+		stale    uint64
+		uncached uint64
+	}
+	buckets := map[time.Time]*bucketAgg{}
+
 	for _, g := range z.DNSGroups {
 		bucket, err := time.Parse(time.RFC3339, g.Dimensions.DatetimeMinute)
 		if err != nil {
 			continue
 		}
 
-		o := func(metric string, value uint64, extraLabels ...string) {
-			if enabled != nil && !enabled[metric] {
-				return
-			}
-			labelPairs := append([]string{"zone", zoneName}, extraLabels...)
-			obs = append(obs, converge.Observation{
-				Key:    converge.NewKey(metric, labelPairs...),
-				Value:  value,
-				Bucket: bucket,
-			})
-		}
+		emit("cloudflare_zone_dns_queries_total", g.Count, bucket,
+			"response_code", g.Dimensions.ResponseCode,
+			"query_type", g.Dimensions.QueryType,
+			"ip_version", g.Dimensions.IpVersion,
+		)
 
-		o("cloudflare_zone_dns_queries_total", g.Count, "response_code", g.Dimensions.ResponseCode, "query_type", g.Dimensions.QueryType)
+		if _, ok := buckets[bucket]; !ok {
+			buckets[bucket] = &bucketAgg{}
+		}
+		buckets[bucket].stale += g.Sum.CountStale
+		buckets[bucket].uncached += g.Sum.CountNotCachedAndNotStale
+	}
+
+	for bucket, agg := range buckets {
+		emit("cloudflare_zone_dns_stale_total", agg.stale, bucket)
+		emit("cloudflare_zone_dns_uncached_total", agg.uncached, bucket)
 	}
 
 	return obs

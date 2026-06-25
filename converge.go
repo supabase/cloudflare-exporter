@@ -39,7 +39,9 @@ func getConvergeMetricsList() []string {
 // cfetchMetricNames maps canonical MetricName values to the metric name
 // strings used by the cfetch package when building Observation keys.
 var cfetchdnsMetricNames = map[MetricName]string{
-	zoneDNSQueriesMetricName: string(zoneDNSQueriesMetricName),
+	zoneDNSQueriesMetricName:  string(zoneDNSQueriesMetricName),
+	zoneDNSStaleMetricName:    string(zoneDNSStaleMetricName),
+	zoneDNSUncachedMetricName: string(zoneDNSUncachedMetricName),
 }
 
 var cfetchMetricNames = map[MetricName]string{
