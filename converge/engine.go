@@ -1,6 +1,7 @@
 package converge
 
 import (
+	"context"
 	"slices"
 	"time"
 )
@@ -19,9 +20,6 @@ type Config struct {
 	MaxBackfill          time.Duration // max historical backfill on startup
 	BackfillChunk        time.Duration // time range per backfill Fetch call
 	BackfillCallsPerTick int           // max Fetch calls for backfill per tick
-
-	// Testing: optional channel closed after backfill snapshot is pushed.
-	BackfillDone chan<- struct{}
 }
 
 // DefaultConfig returns a config tuned for convergence with reasonable defaults.
@@ -83,6 +81,19 @@ func NewEngine(cfg Config) *Engine {
 		windows: make(map[time.Time]*window),
 		chains:  make(map[string]*chainWithKey),
 	}
+}
+
+// SeedChainBase sets the starting base for a counter chain so that emitted
+// counter values continue from where a previous process left off. Call
+// before Ingest to avoid counter resets on restart.
+func (e *Engine) SeedChainBase(key Key, base uint64) {
+	sk := key.String()
+	ch := e.chains[sk]
+	if ch == nil {
+		ch = &chainWithKey{key: key, counterChain: newCounterChain()}
+		e.chains[sk] = ch
+	}
+	ch.base = base
 }
 
 // Ingest feeds observations into the engine and returns any samples that
@@ -197,6 +208,27 @@ func (e *Engine) Stats() Stats {
 		OldestBucket:         e.oldestBucket,
 		NewestBucket:         e.newestBucket,
 	}
+}
+
+func (e *Engine) seed(ctx context.Context, s Sink, maxBackfill time.Duration) {
+	log := LoggerFromContext(ctx)
+	// Seed chain bases from the sink's last known values so counters
+	// continue monotonically across restarts.
+	seeder, ok := s.(ChainSeeder)
+	if !ok {
+		return
+	}
+	selector := `{__name__=~"cloudflare_zone_.*"}`
+	seeds, err := seeder.LastValues(ctx, selector, maxBackfill)
+	if err != nil {
+		log.WithError(err).Warn("chain seed: failed to query last values, starting from zero")
+		return
+	}
+	for _, sample := range seeds {
+		e.SeedChainBase(sample.Key, sample.Value)
+	}
+	log.WithField("chains_seeded", len(seeds)).Info(
+		"chain seed: loaded last values from sink")
 }
 
 // emit feeds a stabilized gauge value through the per-key counter chain and

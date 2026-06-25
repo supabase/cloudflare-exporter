@@ -182,7 +182,10 @@ func runConvergeUntilBackfill(t *testing.T, cfg converge.Config, fetcher converg
 	t.Helper()
 
 	backfillDone := make(chan struct{})
-	cfg.BackfillDone = backfillDone
+	backfillDoneCB := func() {
+		close(
+			backfillDone)
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -191,7 +194,7 @@ func runConvergeUntilBackfill(t *testing.T, cfg converge.Config, fetcher converg
 		logrus.WithField("component", t.Name()))
 
 	go func() {
-		if err := converge.Run(logCtx, cfg, fetcher, sink); err != nil && ctx.Err() == nil {
+		if err := converge.Run(logCtx, cfg, fetcher, sink, backfillDoneCB); err != nil && ctx.Err() == nil {
 			t.Errorf("converge.Run failed: %v", err)
 		}
 	}()
