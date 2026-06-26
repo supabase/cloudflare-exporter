@@ -8,6 +8,7 @@ import (
 
 	cfzones "github.com/cloudflare/cloudflare-go/v4/zones"
 	"github.com/lablabs/cloudflare-exporter/cfgql"
+	"github.com/lablabs/cloudflare-exporter/metricnames"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -97,8 +98,8 @@ func TestFetch(t *testing.T) {
 	}
 
 	// queries_total: two rows
-	require.Len(t, byMetric[metricDNSQueriesTotal], 2)
-	for _, o := range byMetric[metricDNSQueriesTotal] {
+	require.Len(t, byMetric[metricnames.ZoneDNSQueriesTotal], 2)
+	for _, o := range byMetric[metricnames.ZoneDNSQueriesTotal] {
 		assert.Equal(t, "example.com", o.labels["zone"])
 		assert.NotEmpty(t, o.labels["response_code"])
 		assert.NotEmpty(t, o.labels["query_type"])
@@ -106,15 +107,15 @@ func TestFetch(t *testing.T) {
 	}
 
 	// stale_total: one zone-level observation (0+1=1)
-	require.Len(t, byMetric[metricDNSStaleTotal], 1)
-	assert.Equal(t, uint64(1), byMetric[metricDNSStaleTotal][0].value)
-	assert.Equal(t, "example.com", byMetric[metricDNSStaleTotal][0].labels["zone"])
-	assert.Empty(t, byMetric[metricDNSStaleTotal][0].labels["response_code"])
+	require.Len(t, byMetric[metricnames.ZoneDNSStaleTotal], 1)
+	assert.Equal(t, uint64(1), byMetric[metricnames.ZoneDNSStaleTotal][0].value)
+	assert.Equal(t, "example.com", byMetric[metricnames.ZoneDNSStaleTotal][0].labels["zone"])
+	assert.Empty(t, byMetric[metricnames.ZoneDNSStaleTotal][0].labels["response_code"])
 
 	// uncached_total: one zone-level observation (40+5=45)
-	require.Len(t, byMetric[metricDNSUncachedTotal], 1)
-	assert.Equal(t, uint64(45), byMetric[metricDNSUncachedTotal][0].value)
-	assert.Equal(t, "example.com", byMetric[metricDNSUncachedTotal][0].labels["zone"])
+	require.Len(t, byMetric[metricnames.ZoneDNSUncachedTotal], 1)
+	assert.Equal(t, uint64(45), byMetric[metricnames.ZoneDNSUncachedTotal][0].value)
+	assert.Equal(t, "example.com", byMetric[metricnames.ZoneDNSUncachedTotal][0].labels["zone"])
 }
 
 func TestFetchSkipsChunkOnError(t *testing.T) {
@@ -153,17 +154,17 @@ func TestFetchEnabledFilter(t *testing.T) {
 	assert.Empty(t, obs)
 
 	// only queries_total enabled
-	f2 := New(&mockGQLClient{resp: resp}, zones, map[string]bool{metricDNSQueriesTotal: true})
+	f2 := New(&mockGQLClient{resp: resp}, zones, map[string]bool{metricnames.ZoneDNSQueriesTotal: true})
 	obs2, err := f2.Fetch(context.Background(), ts, ts.Add(time.Minute))
 	require.NoError(t, err)
 	require.Len(t, obs2, 1)
-	assert.Equal(t, metricDNSQueriesTotal, obs2[0].Key.Name)
+	assert.Equal(t, metricnames.ZoneDNSQueriesTotal, obs2[0].Key.Name)
 
 	// all three enabled
 	f3 := New(&mockGQLClient{resp: resp}, zones, map[string]bool{
-		metricDNSQueriesTotal:  true,
-		metricDNSStaleTotal:    true,
-		metricDNSUncachedTotal: true,
+		metricnames.ZoneDNSQueriesTotal:  true,
+		metricnames.ZoneDNSStaleTotal:    true,
+		metricnames.ZoneDNSUncachedTotal: true,
 	})
 	obs3, err := f3.Fetch(context.Background(), ts, ts.Add(time.Minute))
 	require.NoError(t, err)
