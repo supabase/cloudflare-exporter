@@ -9,24 +9,25 @@ import (
 // Config controls engine behavior. See README.md for detailed descriptions.
 type Config struct {
 	// Stability: how the engine decides a value is ready to push.
-	Threshold int           // consecutive identical observations to stabilize (min: 1)
-	WindowTTL time.Duration // close window when bucket age exceeds this duration
+	Threshold int // consecutive identical observations to stabilize (min: 1)
 
 	// Polling: how the runner drives the engine.
 	PollInterval time.Duration // tick interval for the live lane
-	Lookback     time.Duration // live lane query range: [now-Lookback, now]
+	Lookback     time.Duration // live lane query range and window TTL
 
 	// Backfill: how startup gaps are filled.
 	MaxBackfill          time.Duration // max historical backfill on startup
 	BackfillChunk        time.Duration // time range per backfill Fetch call
 	BackfillCallsPerTick int           // max Fetch calls for backfill per tick
+
+	// Callbacks (optional).
+	OnTick func(TickStats) // called after each runner tick with per-tick stats
 }
 
 // DefaultConfig returns a config tuned for convergence with reasonable defaults.
 func DefaultConfig() Config {
 	return Config{
 		Threshold:            3,
-		WindowTTL:            15 * time.Minute,
 		PollInterval:         30 * time.Second,
 		Lookback:             10 * time.Minute,
 		MaxBackfill:          2 * time.Hour,
@@ -132,7 +133,7 @@ func (e *Engine) Ingest(obs []Observation) []Sample {
 	return ready
 }
 
-// Expire checks all open windows against WindowTTL. Windows past their TTL
+// Expire checks all open windows against Lookback. Windows past their TTL
 // have ALL trackers' latest values fed to the counter chains before eviction,
 // capturing any post-stabilization drift.
 //
@@ -146,7 +147,7 @@ func (e *Engine) Expire(now time.Time, evictChains bool) []Sample {
 	// fail when a newer bucket is visited before an older one.
 	var expired []time.Time
 	for bucket := range e.windows {
-		if now.Sub(bucket) >= e.cfg.WindowTTL {
+		if now.Sub(bucket) > e.cfg.Lookback {
 			expired = append(expired, bucket)
 		}
 	}
@@ -200,11 +201,18 @@ func (e *Engine) Stats() Stats {
 	for _, w := range e.windows {
 		trackers += len(w.trackers)
 	}
+	var gaugeDown, counterReg uint64
+	for _, ch := range e.chains {
+		gaugeDown += ch.gaugeDownRevisions
+		counterReg += ch.counterRegressions
+	}
 	return Stats{
 		OpenWindows:          len(e.windows),
 		TrackerCount:         trackers,
 		ExpireCount:          e.expireCount,
 		PostStabilizeUpdates: e.postStabilizeUpdate,
+		GaugeDownRevisions:   gaugeDown,
+		CounterRegressions:   counterReg,
 		OldestBucket:         e.oldestBucket,
 		NewestBucket:         e.newestBucket,
 	}
@@ -270,10 +278,10 @@ func (e *Engine) Snapshot() []Sample {
 }
 
 // EvictStaleChains evicts all counter chain entries whose bucket is older
-// than WindowTTL. Used after Snapshot to clean up chain entries that were
+// than Lookback. Used after Snapshot to clean up chain entries that were
 // preserved during backfill (when Expire ran with evictChains=false).
 func (e *Engine) EvictStaleChains(now time.Time) {
-	cutoff := now.Add(-e.cfg.WindowTTL)
+	cutoff := now.Add(-e.cfg.Lookback)
 	for _, ch := range e.chains {
 		for len(ch.entries) > 0 && ch.entries[0].bucket.Before(cutoff) {
 			ch.base += ch.entries[0].gauge

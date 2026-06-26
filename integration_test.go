@@ -233,7 +233,6 @@ func TestIntegrationBackfillAndPush(t *testing.T) {
 	startTime := time.Now()
 	cfg := converge.Config{
 		Threshold:            1,
-		WindowTTL:            30 * time.Minute,
 		PollInterval:         10 * time.Second,
 		Lookback:             10 * time.Minute,
 		MaxBackfill:          20 * time.Minute,
@@ -290,7 +289,6 @@ func TestIntegrationNoRateSpikes(t *testing.T) {
 	startTime := time.Now()
 	cfg := converge.Config{
 		Threshold:            1,
-		WindowTTL:            15 * time.Minute,
 		PollInterval:         10 * time.Second,
 		Lookback:             10 * time.Minute,
 		MaxBackfill:          60 * time.Minute,

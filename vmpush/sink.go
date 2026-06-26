@@ -156,7 +156,7 @@ func (s *Sink) Push(ctx context.Context, samples []converge.Sample) error {
 // The query endpoint is derived from the write endpoint by replacing
 // /api/v1/write with /api/v1/query.
 func (s *Sink) LastValues(ctx context.Context, selector string, lookback time.Duration) (map[string]converge.Sample, error) {
-	queryURL := strings.Replace(s.endpoint, "/api/v1/write", "/api/v1/query", 1)
+	queryURL := strings.Replace(s.endpoint, "/api/v1/write", "/query", 1)
 
 	query := fmt.Sprintf(`last_over_time(%s[%s])`, selector, lookback.String())
 	params := url.Values{

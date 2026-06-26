@@ -1,0 +1,87 @@
+{
+  "seq": 3,
+  "start": "2026-06-26T13:42:00Z",
+  "end": "2026-06-26T13:52:00Z",
+  "observations": [
+    {
+      "name": "cloudflare_zone_requests_total",
+      "labels": {
+        "zone": "captured"
+      },
+      "value": 967,
+      "bucket": "2026-06-26T13:51:00Z"
+    },
+    {
+      "name": "cloudflare_zone_requests_total",
+      "labels": {
+        "zone": "captured"
+      },
+      "value": 1041,
+      "bucket": "2026-06-26T13:43:00Z"
+    },
+    {
+      "name": "cloudflare_zone_requests_total",
+      "labels": {
+        "zone": "captured"
+      },
+      "value": 1052,
+      "bucket": "2026-06-26T13:47:00Z"
+    },
+    {
+      "name": "cloudflare_zone_requests_total",
+      "labels": {
+        "zone": "captured"
+      },
+      "value": 1111,
+      "bucket": "2026-06-26T13:44:00Z"
+    },
+    {
+      "name": "cloudflare_zone_requests_total",
+      "labels": {
+        "zone": "captured"
+      },
+      "value": 961,
+      "bucket": "2026-06-26T13:50:00Z"
+    },
+    {
+      "name": "cloudflare_zone_requests_total",
+      "labels": {
+        "zone": "captured"
+      },
+      "value": 971,
+      "bucket": "2026-06-26T13:48:00Z"
+    },
+    {
+      "name": "cloudflare_zone_requests_total",
+      "labels": {
+        "zone": "captured"
+      },
+      "value": 975,
+      "bucket": "2026-06-26T13:42:00Z"
+    },
+    {
+      "name": "cloudflare_zone_requests_total",
+      "labels": {
+        "zone": "captured"
+      },
+      "value": 1047,
+      "bucket": "2026-06-26T13:49:00Z"
+    },
+    {
+      "name": "cloudflare_zone_requests_total",
+      "labels": {
+        "zone": "captured"
+      },
+      "value": 977,
+      "bucket": "2026-06-26T13:45:00Z"
+    },
+    {
+      "name": "cloudflare_zone_requests_total",
+      "labels": {
+        "zone": "captured"
+      },
+      "value": 999,
+      "bucket": "2026-06-26T13:46:00Z"
+    }
+  ]
+}

@@ -15,7 +15,6 @@ import (
 
 const (
 	argConvergeThreshold       = "converge_threshold"
-	argConvergeWindowTTL       = "converge_window_ttl"
 	argConvergePollInterval    = "converge_poll_interval"
 	argConvergeLookback        = "converge_lookback"
 	argConvergeMaxBackfill     = "converge_max_backfill"
@@ -123,7 +122,6 @@ func cfetchdnsEnabledSet() map[string]bool {
 func convergeConfig() converge.Config {
 	cfg := converge.DefaultConfig()
 	cfg.Threshold = viper.GetInt(argConvergeThreshold)
-	cfg.WindowTTL = viper.GetDuration(argConvergeWindowTTL)
 	cfg.PollInterval = viper.GetDuration(argConvergePollInterval)
 	cfg.Lookback = viper.GetDuration(argConvergeLookback)
 	cfg.MaxBackfill = viper.GetDuration(argConvergeMaxBackfill)
@@ -142,6 +140,20 @@ func setupConvergerWithFetcher(ctx context.Context, component string, fetcher co
 		return nil, err
 	}
 	cfg := convergeConfig()
+	cfg.OnTick = func(ts converge.TickStats) {
+		convergeIngestSamples.WithLabelValues(component).Add(float64(ts.IngestSamples))
+		convergePostStabilizeUpdates.WithLabelValues(component).Add(float64(ts.PostStabilizeUpdates))
+		convergeExpireFlushes.WithLabelValues(component).Add(float64(ts.ExpireFlushes))
+		convergeExpireSamples.WithLabelValues(component).Add(float64(ts.ExpireSamples))
+		convergeLiveFetchObservations.WithLabelValues(component).Add(float64(ts.LiveObservations))
+		convergeBackfillFetchObservations.WithLabelValues(component).Add(float64(ts.BackfillObservations))
+		convergeSnapshotSamples.WithLabelValues(component).Add(float64(ts.SnapshotSamples))
+		convergeOpenWindows.WithLabelValues(component).Set(float64(ts.OpenWindows))
+		convergeTrackerCount.WithLabelValues(component).Set(float64(ts.TrackerCount))
+		convergeGaugeDownRevisions.WithLabelValues(component).Add(float64(ts.GaugeDownRevisions))
+		convergeCounterRegressions.WithLabelValues(component).Add(float64(ts.CounterRegressions))
+		convergePushErrors.WithLabelValues(component).Add(float64(ts.PushErrors))
+	}
 	return func(ctx context.Context) error {
 		return converge.Run(
 			converge.ContextWithLogger(ctx, log.WithField("component", component)),

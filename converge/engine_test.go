@@ -82,7 +82,7 @@ func TestIngestMultipleSeries(t *testing.T) {
 
 func TestExpireTTL(t *testing.T) {
 	c := cfg(3) // won't stabilize with just 1 observation
-	c.WindowTTL = 5 * time.Minute
+	c.Lookback = 5 * time.Minute
 	e := NewEngine(c)
 
 	e.Ingest([]Observation{obs("req", 100, t0)})
@@ -101,7 +101,7 @@ func TestExpireTTL(t *testing.T) {
 
 func TestExpireTTLNoPushIfAlreadyPushed(t *testing.T) {
 	c := cfg(1)
-	c.WindowTTL = 5 * time.Minute
+	c.Lookback = 5 * time.Minute
 	e := NewEngine(c)
 
 	// Threshold=1, so this stabilizes and pushes immediately.
@@ -116,7 +116,7 @@ func TestExpireTTLNoPushIfAlreadyPushed(t *testing.T) {
 
 func TestExpireTTLCleansPushedWindows(t *testing.T) {
 	c := cfg(1)
-	c.WindowTTL = 5 * time.Minute
+	c.Lookback = 5 * time.Minute
 	e := NewEngine(c)
 
 	// Threshold=1 so it pushes immediately.
@@ -158,7 +158,7 @@ func TestStatsEmpty(t *testing.T) {
 // dropped on TTL expiry instead of being force-flushed.
 func TestExpireDropsUnstabilizedSeriesWhenWindowPartiallyPushed(t *testing.T) {
 	c := cfg(3)
-	c.WindowTTL = 5 * time.Minute
+	c.Lookback = 5 * time.Minute
 	e := NewEngine(c)
 
 	// "req" stabilizes after 3 identical observations (threshold=3).
@@ -244,7 +244,7 @@ func TestExpireMultipleWindowsEvictInOrder(t *testing.T) {
 	// must evict oldest-first; nondeterministic map iteration would cause
 	// the newer bucket's Evict to fail silently.
 	c := cfg(1)
-	c.WindowTTL = 5 * time.Minute
+	c.Lookback = 5 * time.Minute
 	e := NewEngine(c)
 	t1 := t0.Add(time.Minute)
 	t2 := t0.Add(2 * time.Minute)
@@ -269,7 +269,7 @@ func TestExpireCounterEviction(t *testing.T) {
 	// After a bucket is expired, its value is folded into the chain base
 	// and subsequent buckets still produce correct counters.
 	c := cfg(1)
-	c.WindowTTL = 5 * time.Minute
+	c.Lookback = 5 * time.Minute
 	e := NewEngine(c)
 	t1 := t0.Add(time.Minute)
 	t2 := t0.Add(10 * time.Minute)
@@ -297,7 +297,7 @@ func TestExpireCounterCapturesPostStabilizationDrift(t *testing.T) {
 	// re-stabilizing. On expire, the engine feeds the latest value (115)
 	// to the chain.
 	c := cfg(3)
-	c.WindowTTL = 5 * time.Minute
+	c.Lookback = 5 * time.Minute
 	e := NewEngine(c)
 
 	// Stabilize at 100.
@@ -344,4 +344,76 @@ func TestConvergenceSequence(t *testing.T) {
 	samples = e.Ingest([]Observation{obs("req", 210, bucket)})
 	require.Len(t, samples, 1)
 	assert.Equal(t, uint64(210), samples[0].Value)
+}
+
+// TestExpireBoundaryDoubleCount demonstrates a bug when WindowTTL == Lookback.
+// A bucket at exactly the boundary is expired (gauge folded into base), then
+// re-fetched on the next tick. The re-inserted entry gets counter =
+// base (which already includes the gauge) + gauge again = double-counted.
+// The counter should never go backwards or double-count.
+func TestExpireBoundaryDoubleCount(t *testing.T) {
+	c := cfg(1)
+	c.Lookback = 5 * time.Minute
+
+	e := NewEngine(c)
+
+	// Build up 3 buckets with gauge=100 each.
+	t1 := t0
+	t2 := t0.Add(1 * time.Minute)
+	t3 := t0.Add(2 * time.Minute)
+
+	samples := e.Ingest([]Observation{obs("req", 100, t1)})
+	require.Len(t, samples, 1)
+	assert.Equal(t, uint64(100), samples[0].Value) // counter: 0+100=100
+
+	samples = e.Ingest([]Observation{obs("req", 100, t2)})
+	require.Len(t, samples, 1)
+	assert.Equal(t, uint64(200), samples[0].Value) // counter: 100+100=200
+
+	samples = e.Ingest([]Observation{obs("req", 100, t3)})
+	require.Len(t, samples, 1)
+	assert.Equal(t, uint64(300), samples[0].Value) // counter: 200+100=300
+
+	// Expire t1 (exactly at boundary: now - t1 == Lookback).
+	// With >= this expires; with > it wouldn't.
+	now := t1.Add(5 * time.Minute)
+	e.Expire(now, true)
+
+	// Simulate next tick: live fetch returns t1 again (it's within [now-Lookback, now]).
+	// This creates a new window and tracker for t1.
+	samples = e.Ingest([]Observation{obs("req", 100, t1)})
+
+	// BUG: if the chain evicted t1 and folded gauge into base, then
+	// re-inserting t1 produces counter = base(100) + gauge(100) = 200.
+	// But the counter at t1 was already pushed as 100. The later buckets
+	// cascade: t2 becomes 300, t3 becomes 400. Everything shifted up by 100.
+	//
+	// CORRECT: t1's counter should still be 100 (no change, no re-emission).
+	if len(samples) > 0 {
+		for _, s := range samples {
+			t.Logf("re-emitted: bucket=%s counter=%d", s.Timestamp.Format(time.RFC3339), s.Value)
+		}
+		t.Error("bucket at Lookback boundary was expired and re-ingested, causing counter double-count")
+	}
+}
+
+// TestKeyStringLabelOrder demonstrates that Keys with the same labels in
+// different order produce different String() values, which causes the
+// engine to create separate counter chains for what should be the same series.
+func TestKeyStringLabelOrder(t *testing.T) {
+	k1 := NewKey("metric", "zone", "example.com", "status", "200")
+	k2 := NewKey("metric", "status", "200", "zone", "example.com")
+
+	// These represent the same metric series but produce different strings.
+	s1 := k1.String()
+	s2 := k2.String()
+
+	t.Logf("k1: %s", s1)
+	t.Logf("k2: %s", s2)
+
+	// BUG: these should be equal (same labels, same values) but aren't
+	// because String() preserves insertion order.
+	assert.Equal(t, s1, s2,
+		"Keys with same labels in different order should produce the same string; "+
+			"different strings cause separate counter chains for the same VM series")
 }

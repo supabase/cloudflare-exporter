@@ -22,13 +22,15 @@ type counterEmission struct {
 // and the chain reports which values need re-pushing.
 //
 // This is a prefix sum array with point-update support. For the small number
-// of active buckets (bounded by WindowTTL / bucket_interval, roughly 15), a
+// of active buckets (bounded by Lookback / bucket_interval, roughly 15), a
 // sorted slice with linear recomputation is optimal. A Fenwick tree (Binary
 // Indexed Tree) solves the same problem class in O(log n) per operation but
 // adds complexity that isn't justified at this scale.
 type counterChain struct {
-	base    uint64       // accumulated sum of evicted (expired) buckets
-	entries []chainEntry // sorted ascending by bucket time
+	base               uint64       // accumulated sum of evicted (expired) buckets
+	entries            []chainEntry // sorted ascending by bucket time
+	gaugeDownRevisions uint64       // CF revised a gauge downward
+	counterRegressions uint64       // computed counter was lower than previous emission
 }
 
 type chainEntry struct {
@@ -52,6 +54,9 @@ func (c *counterChain) Set(bucket time.Time, gauge uint64) []counterEmission {
 		if c.entries[idx].gauge == gauge {
 			return nil
 		}
+		if gauge < c.entries[idx].gauge {
+			c.gaugeDownRevisions++
+		}
 		c.entries[idx].gauge = gauge
 	} else {
 		// New entry: insert at sorted position.
@@ -73,6 +78,9 @@ func (c *counterChain) Set(bucket time.Time, gauge uint64) []counterEmission {
 		newCounter := prev + c.entries[i].gauge
 
 		if newCounter != c.entries[i].counter || i == idx {
+			if c.entries[i].counter > 0 && newCounter < c.entries[i].counter {
+				c.counterRegressions++
+			}
 			c.entries[i].counter = newCounter
 			emissions = append(emissions, counterEmission{
 				Bucket:  c.entries[i].bucket,
