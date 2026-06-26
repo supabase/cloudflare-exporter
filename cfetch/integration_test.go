@@ -14,6 +14,7 @@ import (
 	cfzones "github.com/cloudflare/cloudflare-go/v4/zones"
 	"github.com/lablabs/cloudflare-exporter/cfetch"
 	"github.com/lablabs/cloudflare-exporter/cfgql"
+	"github.com/lablabs/cloudflare-exporter/metricnames"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -106,32 +107,32 @@ func TestIntegrationFetchReturnsAllMetrics(t *testing.T) {
 
 	// httpRequests1mGroups scalar metrics (always present for active zones)
 	expected1m := []string{
-		"cloudflare_zone_requests_total",
-		"cloudflare_zone_requests_cached",
-		"cloudflare_zone_requests_ssl_encrypted",
-		"cloudflare_zone_bandwidth_total",
-		"cloudflare_zone_bandwidth_cached",
-		"cloudflare_zone_bandwidth_ssl_encrypted",
-		"cloudflare_zone_threats_total",
-		"cloudflare_zone_uniques_total",
+		metricnames.ZoneRequestsTotal,
+		metricnames.ZoneRequestsCached,
+		metricnames.ZoneRequestsSSLEncrypted,
+		metricnames.ZoneBandwidthTotal,
+		metricnames.ZoneBandwidthCached,
+		metricnames.ZoneBandwidthSSLEncrypted,
+		metricnames.ZoneThreatsTotal,
+		metricnames.ZoneUniquesTotal,
 	}
 	for _, name := range expected1m {
 		assert.True(t, got[name], "missing 1m metric: %s", name)
 	}
 
 	// httpRequestsAdaptiveGroups
-	assert.True(t, got["cloudflare_zone_requests_status_v2"],
-		"missing adaptive metric: cloudflare_zone_requests_status_v2")
+	assert.True(t, got[metricnames.ZoneRequestsStatusV2],
+		"missing adaptive metric: %s", metricnames.ZoneRequestsStatusV2)
 
 	// Dimensional metrics (may be absent for very low-traffic zones,
 	// so log warnings instead of failing).
 	dimensional := []string{
-		"cloudflare_zone_requests_content_type",
-		"cloudflare_zone_bandwidth_content_type",
-		"cloudflare_zone_requests_country",
-		"cloudflare_zone_bandwidth_country",
-		"cloudflare_zone_requests_status",
-		"cloudflare_zone_requests_browser_map_page_views_count",
+		metricnames.ZoneRequestsContentType,
+		metricnames.ZoneBandwidthContentType,
+		metricnames.ZoneRequestsCountry,
+		metricnames.ZoneBandwidthCountry,
+		metricnames.ZoneRequestsStatus,
+		metricnames.ZoneRequestsBrowserMap,
 	}
 	for _, name := range dimensional {
 		if !got[name] {
