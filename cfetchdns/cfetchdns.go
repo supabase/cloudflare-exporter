@@ -17,6 +17,12 @@ import (
 
 const gqlQueryLimit = 9999
 
+const (
+	metricDNSQueriesTotal  = "cloudflare_zone_dns_queries_total"
+	metricDNSStaleTotal    = "cloudflare_zone_dns_stale_total"
+	metricDNSUncachedTotal = "cloudflare_zone_dns_uncached_total"
+)
+
 // Fetcher implements converge.Fetcher by querying Cloudflare's GraphQL API
 // for zone DNS analytics over a time range.
 type Fetcher struct {
@@ -149,7 +155,7 @@ func flattenDNSGroups(z zoneData, zoneName string, enabled map[string]bool) []co
 			continue
 		}
 
-		emit("cloudflare_zone_dns_queries_total", g.Count, bucket,
+		emit(metricDNSQueriesTotal, g.Count, bucket,
 			"response_code", g.Dimensions.ResponseCode,
 			"query_type", g.Dimensions.QueryType,
 			"ip_version", g.Dimensions.IPVersion,
@@ -163,8 +169,8 @@ func flattenDNSGroups(z zoneData, zoneName string, enabled map[string]bool) []co
 	}
 
 	for bucket, agg := range buckets {
-		emit("cloudflare_zone_dns_stale_total", agg.stale, bucket)
-		emit("cloudflare_zone_dns_uncached_total", agg.uncached, bucket)
+		emit(metricDNSStaleTotal, agg.stale, bucket)
+		emit(metricDNSUncachedTotal, agg.uncached, bucket)
 	}
 
 	return obs

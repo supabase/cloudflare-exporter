@@ -97,8 +97,8 @@ func TestFetch(t *testing.T) {
 	}
 
 	// queries_total: two rows
-	require.Len(t, byMetric["cloudflare_zone_dns_queries_total"], 2)
-	for _, o := range byMetric["cloudflare_zone_dns_queries_total"] {
+	require.Len(t, byMetric[metricDNSQueriesTotal], 2)
+	for _, o := range byMetric[metricDNSQueriesTotal] {
 		assert.Equal(t, "example.com", o.labels["zone"])
 		assert.NotEmpty(t, o.labels["response_code"])
 		assert.NotEmpty(t, o.labels["query_type"])
@@ -106,15 +106,15 @@ func TestFetch(t *testing.T) {
 	}
 
 	// stale_total: one zone-level observation (0+1=1)
-	require.Len(t, byMetric["cloudflare_zone_dns_stale_total"], 1)
-	assert.Equal(t, uint64(1), byMetric["cloudflare_zone_dns_stale_total"][0].value)
-	assert.Equal(t, "example.com", byMetric["cloudflare_zone_dns_stale_total"][0].labels["zone"])
-	assert.Empty(t, byMetric["cloudflare_zone_dns_stale_total"][0].labels["response_code"])
+	require.Len(t, byMetric[metricDNSStaleTotal], 1)
+	assert.Equal(t, uint64(1), byMetric[metricDNSStaleTotal][0].value)
+	assert.Equal(t, "example.com", byMetric[metricDNSStaleTotal][0].labels["zone"])
+	assert.Empty(t, byMetric[metricDNSStaleTotal][0].labels["response_code"])
 
 	// uncached_total: one zone-level observation (40+5=45)
-	require.Len(t, byMetric["cloudflare_zone_dns_uncached_total"], 1)
-	assert.Equal(t, uint64(45), byMetric["cloudflare_zone_dns_uncached_total"][0].value)
-	assert.Equal(t, "example.com", byMetric["cloudflare_zone_dns_uncached_total"][0].labels["zone"])
+	require.Len(t, byMetric[metricDNSUncachedTotal], 1)
+	assert.Equal(t, uint64(45), byMetric[metricDNSUncachedTotal][0].value)
+	assert.Equal(t, "example.com", byMetric[metricDNSUncachedTotal][0].labels["zone"])
 }
 
 func TestFetchSkipsChunkOnError(t *testing.T) {
@@ -153,17 +153,17 @@ func TestFetchEnabledFilter(t *testing.T) {
 	assert.Empty(t, obs)
 
 	// only queries_total enabled
-	f2 := New(&mockGQLClient{resp: resp}, zones, map[string]bool{"cloudflare_zone_dns_queries_total": true})
+	f2 := New(&mockGQLClient{resp: resp}, zones, map[string]bool{metricDNSQueriesTotal: true})
 	obs2, err := f2.Fetch(context.Background(), ts, ts.Add(time.Minute))
 	require.NoError(t, err)
 	require.Len(t, obs2, 1)
-	assert.Equal(t, "cloudflare_zone_dns_queries_total", obs2[0].Key.Name)
+	assert.Equal(t, metricDNSQueriesTotal, obs2[0].Key.Name)
 
 	// all three enabled
 	f3 := New(&mockGQLClient{resp: resp}, zones, map[string]bool{
-		"cloudflare_zone_dns_queries_total":  true,
-		"cloudflare_zone_dns_stale_total":    true,
-		"cloudflare_zone_dns_uncached_total": true,
+		metricDNSQueriesTotal:  true,
+		metricDNSStaleTotal:    true,
+		metricDNSUncachedTotal: true,
 	})
 	obs3, err := f3.Fetch(context.Background(), ts, ts.Add(time.Minute))
 	require.NoError(t, err)
