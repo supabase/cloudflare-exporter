@@ -29,14 +29,14 @@ func makeDims(dt, rc, qt, ipv string) struct {
 	DatetimeMinute string `json:"datetimeMinute"`
 	ResponseCode   string `json:"responseCode"`
 	QueryType      string `json:"queryType"`
-	IpVersion      string `json:"ipVersion"`
+	IPVersion      string `json:"ipVersion"`
 } {
 	return struct {
 		DatetimeMinute string `json:"datetimeMinute"`
 		ResponseCode   string `json:"responseCode"`
 		QueryType      string `json:"queryType"`
-		IpVersion      string `json:"ipVersion"`
-	}{DatetimeMinute: dt, ResponseCode: rc, QueryType: qt, IpVersion: ipv}
+		IPVersion      string `json:"ipVersion"`
+	}{DatetimeMinute: dt, ResponseCode: rc, QueryType: qt, IPVersion: ipv}
 }
 
 func makeSum(stale, uncached uint64) struct {

@@ -66,7 +66,7 @@ type dnsGroup struct {
 		DatetimeMinute string `json:"datetimeMinute"`
 		ResponseCode   string `json:"responseCode"`
 		QueryType      string `json:"queryType"`
-		IpVersion      string `json:"ipVersion"`
+		IPVersion      string `json:"ipVersion"`
 	} `json:"dimensions"`
 	Sum struct {
 		CountStale                uint64 `json:"countStale"`
@@ -152,7 +152,7 @@ func flattenDNSGroups(z zoneData, zoneName string, enabled map[string]bool) []co
 		emit("cloudflare_zone_dns_queries_total", g.Count, bucket,
 			"response_code", g.Dimensions.ResponseCode,
 			"query_type", g.Dimensions.QueryType,
-			"ip_version", g.Dimensions.IpVersion,
+			"ip_version", g.Dimensions.IPVersion,
 		)
 
 		if _, ok := buckets[bucket]; !ok {
