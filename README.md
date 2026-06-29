@@ -216,6 +216,33 @@ make check
 make clean build
 ```
 
+### Integration Tests
+
+Integration tests hit real Cloudflare and VictoriaMetrics endpoints. They are skipped automatically when the required env vars are not set, so normal `make test` runs are unaffected.
+
+**CF-only test** (verifies GraphQL queries return expected metric names):
+
+```bash
+# Save your Cloudflare Analytics token
+echo "your-token" > ~/.cloudflare_token
+
+# Get the zone ID from the Cloudflare dashboard (Overview tab, bottom right)
+make integration-test CF_TEST_ZONE_ID=your-zone-id
+```
+
+**Full pipeline test** (backfill + push to VictoriaMetrics, verifies data lands in VM):
+
+```bash
+# Spin up a local VM instance
+docker run -d -p 8428:8428 victoriametrics/victoria-metrics:latest
+
+make integration-test-full \
+  CF_TEST_ZONE_ID=your-zone-id \
+  VM_PUSH_ENDPOINT=http://localhost:8428/api/v1/import/prometheus
+
+# VM_PUSH_USER and VM_PUSH_PASSWORD are optional (omit for unauthenticated local VM)
+```
+
 ## Contributing and reporting issues
 
 Feel free to create an issue in this repository if you have questions, suggestions or feature requests.

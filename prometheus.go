@@ -10,6 +10,7 @@ import (
 
 	cfaccounts "github.com/cloudflare/cloudflare-go/v4/accounts"
 	cfzones "github.com/cloudflare/cloudflare-go/v4/zones"
+	"github.com/lablabs/cloudflare-exporter/metricnames"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -20,51 +21,53 @@ func (mn MetricName) String() string {
 }
 
 const (
-	zoneRequestTotalMetricName                     MetricName = "cloudflare_zone_requests_total"
-	zoneRequestCachedMetricName                    MetricName = "cloudflare_zone_requests_cached"
-	zoneRequestSSLEncryptedMetricName              MetricName = "cloudflare_zone_requests_ssl_encrypted"
-	zoneRequestContentTypeMetricName               MetricName = "cloudflare_zone_requests_content_type"
-	zoneRequestCountryMetricName                   MetricName = "cloudflare_zone_requests_country"
-	zoneRequestHTTPStatusMetricName                MetricName = "cloudflare_zone_requests_status"
-	zoneRequestHTTPStatusV2MetricName              MetricName = "cloudflare_zone_requests_status_v2"
-	zoneRequestBrowserMapMetricName                MetricName = "cloudflare_zone_requests_browser_map_page_views_count"
-	zoneRequestOriginStatusCountryHostMetricName   MetricName = "cloudflare_zone_requests_origin_status_country_host"
-	zoneRequestStatusCountryHostMetricName         MetricName = "cloudflare_zone_requests_status_country_host"
-	zoneBandwidthTotalMetricName                   MetricName = "cloudflare_zone_bandwidth_total"
-	zoneBandwidthCachedMetricName                  MetricName = "cloudflare_zone_bandwidth_cached"
-	zoneBandwidthSSLEncryptedMetricName            MetricName = "cloudflare_zone_bandwidth_ssl_encrypted"
-	zoneBandwidthContentTypeMetricName             MetricName = "cloudflare_zone_bandwidth_content_type"
-	zoneBandwidthCountryMetricName                 MetricName = "cloudflare_zone_bandwidth_country"
-	zoneThreatsTotalMetricName                     MetricName = "cloudflare_zone_threats_total"
-	zoneThreatsCountryMetricName                   MetricName = "cloudflare_zone_threats_country"
-	zoneThreatsTypeMetricName                      MetricName = "cloudflare_zone_threats_type"
-	zonePageviewsTotalMetricName                   MetricName = "cloudflare_zone_pageviews_total"
-	zoneUniquesTotalMetricName                     MetricName = "cloudflare_zone_uniques_total"
-	zoneColocationVisitsMetricName                 MetricName = "cloudflare_zone_colocation_visits"
-	zoneColocationEdgeResponseBytesMetricName      MetricName = "cloudflare_zone_colocation_edge_response_bytes"
-	zoneColocationRequestsTotalMetricName          MetricName = "cloudflare_zone_colocation_requests_total"
-	zoneFirewallEventsCountMetricName              MetricName = "cloudflare_zone_firewall_events_count"
-	zoneHealthCheckEventsOriginCountMetricName     MetricName = "cloudflare_zone_health_check_events_origin_count"
-	zoneWorkerRequestHTTPStatusMetricName          MetricName = "cloudflare_zone_worker_requests_status"
-	workerRequestsMetricName                       MetricName = "cloudflare_worker_requests_count"
-	workerErrorsMetricName                         MetricName = "cloudflare_worker_errors_count"
-	workerCPUTimeMetricName                        MetricName = "cloudflare_worker_cpu_time"
-	workerDurationMetricName                       MetricName = "cloudflare_worker_duration"
-	workerDeploymentsMetricName                    MetricName = "cloudflare_worker_deployments"
-	poolHealthStatusMetricName                     MetricName = "cloudflare_zone_pool_health_status"
-	poolRequestsTotalMetricName                    MetricName = "cloudflare_zone_pool_requests_total"
-	poolOriginHealthStatusMetricName               MetricName = "cloudflare_pool_origin_health_status"
-	logpushFailedJobsAccountMetricName             MetricName = "cloudflare_logpush_failed_jobs_account_count"
-	logpushFailedJobsZoneMetricName                MetricName = "cloudflare_logpush_failed_jobs_zone_count"
-	r2StorageTotalMetricName                       MetricName = "cloudflare_r2_storage_total_bytes"
-	r2StorageMetricName                            MetricName = "cloudflare_r2_storage_bytes"
-	r2OperationMetricName                          MetricName = "cloudflare_r2_operation_count"
-	zoneCustomHostnamesTotalMetricName             MetricName = "cloudflare_zone_custom_hostnames_total"
-	accountCustomHostnamesQuotaAllocatedMetricName MetricName = "cloudflare_account_custom_hostnames_quota_allocated"
-	accountCustomHostnamesQuotaUsedMetricName      MetricName = "cloudflare_account_custom_hostnames_quota_used"
+	zoneRequestTotalMetricName                     MetricName = metricnames.ZoneRequestsTotal
+	zoneRequestCachedMetricName                    MetricName = metricnames.ZoneRequestsCached
+	zoneRequestSSLEncryptedMetricName              MetricName = metricnames.ZoneRequestsSSLEncrypted
+	zoneRequestContentTypeMetricName               MetricName = metricnames.ZoneRequestsContentType
+	zoneRequestCountryMetricName                   MetricName = metricnames.ZoneRequestsCountry
+	zoneRequestHTTPStatusMetricName                MetricName = metricnames.ZoneRequestsStatus
+	zoneRequestHTTPStatusV2MetricName              MetricName = metricnames.ZoneRequestsStatusV2
+	zoneRequestBrowserMapMetricName                MetricName = metricnames.ZoneRequestsBrowserMap
+	zoneRequestOriginStatusCountryHostMetricName   MetricName = metricnames.ZoneRequestsOriginStatusCountryHost
+	zoneRequestStatusCountryHostMetricName         MetricName = metricnames.ZoneRequestsStatusCountryHost
+	zoneBandwidthTotalMetricName                   MetricName = metricnames.ZoneBandwidthTotal
+	zoneBandwidthCachedMetricName                  MetricName = metricnames.ZoneBandwidthCached
+	zoneBandwidthSSLEncryptedMetricName            MetricName = metricnames.ZoneBandwidthSSLEncrypted
+	zoneBandwidthContentTypeMetricName             MetricName = metricnames.ZoneBandwidthContentType
+	zoneBandwidthCountryMetricName                 MetricName = metricnames.ZoneBandwidthCountry
+	zoneThreatsTotalMetricName                     MetricName = metricnames.ZoneThreatsTotal
+	zoneThreatsCountryMetricName                   MetricName = metricnames.ZoneThreatsCountry
+	zoneThreatsTypeMetricName                      MetricName = metricnames.ZoneThreatsType
+	zonePageviewsTotalMetricName                   MetricName = metricnames.ZonePageviewsTotal
+	zoneUniquesTotalMetricName                     MetricName = metricnames.ZoneUniquesTotal
+	zoneColocationVisitsMetricName                 MetricName = metricnames.ZoneColocationVisits
+	zoneColocationEdgeResponseBytesMetricName      MetricName = metricnames.ZoneColocationEdgeResponseBytes
+	zoneColocationRequestsTotalMetricName          MetricName = metricnames.ZoneColocationRequestsTotal
+	zoneFirewallEventsCountMetricName              MetricName = metricnames.ZoneFirewallEventsCount
+	zoneHealthCheckEventsOriginCountMetricName     MetricName = metricnames.ZoneHealthCheckEventsOriginCount
+	zoneWorkerRequestHTTPStatusMetricName          MetricName = metricnames.ZoneWorkerRequestsStatus
+	workerRequestsMetricName                       MetricName = metricnames.WorkerRequests
+	workerErrorsMetricName                         MetricName = metricnames.WorkerErrors
+	workerCPUTimeMetricName                        MetricName = metricnames.WorkerCPUTime
+	workerDurationMetricName                       MetricName = metricnames.WorkerDuration
+	workerDeploymentsMetricName                    MetricName = metricnames.WorkerDeployments
+	poolHealthStatusMetricName                     MetricName = metricnames.PoolHealthStatus
+	poolRequestsTotalMetricName                    MetricName = metricnames.PoolRequestsTotal
+	poolOriginHealthStatusMetricName               MetricName = metricnames.PoolOriginHealthStatus
+	logpushFailedJobsAccountMetricName             MetricName = metricnames.LogpushFailedJobsAccount
+	logpushFailedJobsZoneMetricName                MetricName = metricnames.LogpushFailedJobsZone
+	r2StorageTotalMetricName                       MetricName = metricnames.R2StorageTotal
+	r2StorageMetricName                            MetricName = metricnames.R2Storage
+	r2OperationMetricName                          MetricName = metricnames.R2Operation
+	zoneCustomHostnamesTotalMetricName             MetricName = metricnames.ZoneCustomHostnamesTotal
+	accountCustomHostnamesQuotaAllocatedMetricName MetricName = metricnames.AccountCustomHostnamesQuotaAllocated
+	accountCustomHostnamesQuotaUsedMetricName      MetricName = metricnames.AccountCustomHostnamesQuotaUsed
 
 	// DNS analytics — no scrape path equivalent, converge-only.
-	zoneDNSQueriesMetricName MetricName = "cloudflare_zone_dns_queries_total"
+	zoneDNSQueriesMetricName  MetricName = metricnames.ZoneDNSQueriesTotal
+	zoneDNSStaleMetricName    MetricName = metricnames.ZoneDNSStaleTotal
+	zoneDNSUncachedMetricName MetricName = metricnames.ZoneDNSUncachedTotal
 )
 
 type MetricsMap map[MetricName]trackedMetric
