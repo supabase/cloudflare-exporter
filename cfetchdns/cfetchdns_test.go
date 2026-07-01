@@ -26,17 +26,17 @@ func (m *mockGQLClient) RunGQL(_ context.Context, _ *cfgql.GQLRequest, dest any)
 	return nil
 }
 
-func makeDims(dt, rc, qt, ipv string) struct {
+func makeDims(dt, rc, qt string, ipv int) struct {
 	DatetimeMinute string `json:"datetimeMinute"`
 	ResponseCode   string `json:"responseCode"`
 	QueryType      string `json:"queryType"`
-	IPVersion      string `json:"ipVersion"`
+	IPVersion      int    `json:"ipVersion"`
 } {
 	return struct {
 		DatetimeMinute string `json:"datetimeMinute"`
 		ResponseCode   string `json:"responseCode"`
 		QueryType      string `json:"queryType"`
-		IPVersion      string `json:"ipVersion"`
+		IPVersion      int    `json:"ipVersion"`
 	}{DatetimeMinute: dt, ResponseCode: rc, QueryType: qt, IPVersion: ipv}
 }
 
@@ -60,12 +60,12 @@ func TestFetch(t *testing.T) {
 			DNSGroups: []dnsGroup{
 				{
 					Count:      42,
-					Dimensions: makeDims(ts.Format(time.RFC3339), "NOERROR", "A", "4"),
+					Dimensions: makeDims(ts.Format(time.RFC3339), "NOERROR", "A", 4),
 					Sum:        makeSum(0, 40),
 				},
 				{
 					Count:      7,
-					Dimensions: makeDims(ts.Format(time.RFC3339), "NXDOMAIN", "AAAA", "6"),
+					Dimensions: makeDims(ts.Format(time.RFC3339), "NXDOMAIN", "AAAA", 6),
 					Sum:        makeSum(1, 5),
 				},
 			},
@@ -138,7 +138,7 @@ func TestFetchEnabledFilter(t *testing.T) {
 			DNSGroups: []dnsGroup{
 				{
 					Count:      42,
-					Dimensions: makeDims(ts.Format(time.RFC3339), "NOERROR", "A", "4"),
+					Dimensions: makeDims(ts.Format(time.RFC3339), "NOERROR", "A", 4),
 					Sum:        makeSum(0, 40),
 				},
 			},
