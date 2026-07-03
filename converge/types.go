@@ -3,6 +3,7 @@ package converge
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 )
@@ -27,7 +28,9 @@ type Key struct {
 }
 
 // String returns the canonical Prometheus-style representation:
-// name{k1="v1",k2="v2"}. The result is cached for reuse as a map key.
+// name{k1="v1",k2="v2"}. Labels are sorted by name to ensure that
+// two Keys with the same labels in different order produce the same
+// string, which is critical for counter chain identity.
 func (k *Key) String() string {
 	if k.str != "" {
 		return k.str
@@ -36,11 +39,16 @@ func (k *Key) String() string {
 		k.str = k.Name
 		return k.str
 	}
+	sorted := make([]Label, len(k.Labels))
+	copy(sorted, k.Labels)
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i].Name < sorted[j].Name
+	})
 	var b strings.Builder
 	b.WriteString(k.Name)
 	b.WriteByte('{')
 	repl := strings.NewReplacer("\\", "\\\\", "\n", "\\n", "\"", "\\\"")
-	for i, l := range k.Labels {
+	for i, l := range sorted {
 		if i > 0 {
 			b.WriteByte(',')
 		}
@@ -107,8 +115,31 @@ type Stats struct {
 	TrackerCount         int
 	ExpireCount          uint64
 	PostStabilizeUpdates uint64
-	OldestBucket         time.Time // earliest bucket ever ingested
-	NewestBucket         time.Time // latest bucket ever ingested
+	GaugeDownRevisions   uint64 // CF revised a gauge value downward
+	CounterRegressions   uint64 // computed counter was lower than previous emission
+	OldestBucket         time.Time
+	NewestBucket         time.Time
+}
+
+// TickStats captures per-tick activity for external metrics collection.
+// Passed to Config.OnTick after each runner tick.
+type TickStats struct {
+	// Engine state (gauges).
+	OpenWindows  int
+	TrackerCount int
+
+	// Per-tick deltas (counters). These are the counts from this tick only,
+	// not cumulative.
+	LiveObservations     int    // observations from the live fetch
+	BackfillObservations int    // observations from backfill fetches
+	IngestSamples        int    // samples emitted by Ingest
+	ExpireSamples        int    // samples emitted by Expire
+	ExpireFlushes        uint64 // windows force-flushed (never stabilized)
+	SnapshotSamples      int    // samples emitted by post-backfill Snapshot
+	PostStabilizeUpdates uint64 // values that changed after stabilization
+	GaugeDownRevisions   uint64 // CF revised a gauge downward this tick
+	CounterRegressions   uint64 // counter went below previous emission this tick
+	PushErrors           int    // failed Push calls this tick
 }
 
 func (s Stats) String() string {

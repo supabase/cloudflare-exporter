@@ -374,11 +374,6 @@ func main() {
 	viper.BindEnv(argConvergeThreshold)
 	viper.SetDefault(argConvergeThreshold, defaults.Threshold)
 
-	flags.Duration(argConvergeWindowTTL, defaults.WindowTTL,
-		"close window when bucket age exceeds this duration")
-	viper.BindEnv(argConvergeWindowTTL)
-	viper.SetDefault(argConvergeWindowTTL, defaults.WindowTTL)
-
 	flags.Duration(argConvergePollInterval, defaults.PollInterval, "tick interval for the live lane")
 	viper.BindEnv(argConvergePollInterval)
 	viper.SetDefault(argConvergePollInterval, defaults.PollInterval)

@@ -55,8 +55,7 @@ func newRunner(cfg Config) *runner {
 	}
 }
 
-func (r *runner) runBackfill(ctx context.Context, eng *Engine, f Fetcher, s Sink, now time.Time, backfillDoneCB func()) {
-	// Backfill lane: capped at BackfillCallsPerTick.
+func (r *runner) runBackfill(ctx context.Context, eng *Engine, f Fetcher, s Sink, now time.Time, ts *TickStats, backfillDoneCB func()) {
 	if r.backfillDone {
 		return
 	}
@@ -80,6 +79,7 @@ func (r *runner) runBackfill(ctx context.Context, eng *Engine, f Fetcher, s Sink
 		}
 		log.WithField("start", r.backfillCursor).WithField("end", end).
 			WithField("observations", len(obs)).Info("backfill fetch")
+		ts.BackfillObservations += len(obs)
 		eng.Ingest(obs)
 		r.backfillCursor = end
 	}
@@ -88,29 +88,25 @@ func (r *runner) runBackfill(ctx context.Context, eng *Engine, f Fetcher, s Sink
 		return
 	}
 
-	// Backfill just finished this tick: push the final
-	// state of every counter chain entry in one shot.
-	// During backfill, Ingest built up correct prefix sums
-	// but we suppressed pushes to avoid intermediate
-	// cascade artifacts in downstream rate() queries.
 	r.snapshotPushed = true
 
 	st := eng.Stats()
 	log.WithField("oldest_bucket", st.OldestBucket.Format(time.RFC3339)).
 		WithField("newest_bucket", st.NewestBucket.Format(time.RFC3339)).
 		Info("backfill done, pushing snapshot")
-	pushSamples(ctx, s, eng.Snapshot())
-	// Chain eviction was deferred during backfill.
-	// Now that the snapshot captured all entries,
-	// evict stale buckets to free chain memory.
+	snapshot := eng.Snapshot()
+	ts.SnapshotSamples = len(snapshot)
+	pushSamples(ctx, s, snapshot)
 	eng.EvictStaleChains(now)
 	if backfillDoneCB != nil {
 		backfillDoneCB()
 	}
 }
 
-func (r *runner) runLive(ctx context.Context, eng *Engine, f Fetcher, s Sink, now time.Time) {
+func (r *runner) runLive(ctx context.Context, eng *Engine, f Fetcher, s Sink, now time.Time, ts *TickStats) {
 	log := LoggerFromContext(ctx)
+
+	prevStats := eng.Stats()
 
 	liveStart := now.Add(-r.lookback)
 	obs, err := f.Fetch(ctx, liveStart, now)
@@ -118,19 +114,32 @@ func (r *runner) runLive(ctx context.Context, eng *Engine, f Fetcher, s Sink, no
 		log.WithError(err).Error("live fetch failed")
 	} else {
 		logObservationStats(log, obs, now)
+		ts.LiveObservations = len(obs)
 		samples := eng.Ingest(obs)
+		ts.IngestSamples = len(samples)
 		if r.backfillDone {
-			pushSamples(ctx, s, samples)
+			if err := pushSamplesErr(ctx, s, samples); err != nil {
+				ts.PushErrors++
+			}
 		}
 	}
-	// During backfill, expire windows to free tracker memory
-	// but preserve counter chain entries for the snapshot.
+
 	expireSamples := eng.Expire(now, r.backfillDone)
+	ts.ExpireSamples = len(expireSamples)
 	if r.backfillDone {
-		pushSamples(ctx, s, expireSamples)
+		if err := pushSamplesErr(ctx, s, expireSamples); err != nil {
+			ts.PushErrors++
+		}
 	}
 
 	st := eng.Stats()
+	ts.OpenWindows = st.OpenWindows
+	ts.TrackerCount = st.TrackerCount
+	ts.PostStabilizeUpdates = st.PostStabilizeUpdates - prevStats.PostStabilizeUpdates
+	ts.ExpireFlushes = st.ExpireCount - prevStats.ExpireCount
+	ts.GaugeDownRevisions = st.GaugeDownRevisions - prevStats.GaugeDownRevisions
+	ts.CounterRegressions = st.CounterRegressions - prevStats.CounterRegressions
+
 	log.WithField("post_stabilize_update_count", st.PostStabilizeUpdates).
 		WithField("tracker_expire_count", st.ExpireCount).
 		WithField("tracker_count", st.TrackerCount).
@@ -161,9 +170,12 @@ func Run(ctx context.Context, cfg Config, f Fetcher, s Sink, backfillDoneCB func
 			return ctx.Err()
 
 		case now := <-ticker.C:
-			// Live lane: always runs, no call limit.
-			r.runLive(ctx, eng, f, s, now)
-			r.runBackfill(ctx, eng, f, s, now, backfillDoneCB)
+			var ts TickStats
+			r.runLive(ctx, eng, f, s, now, &ts)
+			r.runBackfill(ctx, eng, f, s, now, &ts, backfillDoneCB)
+			if cfg.OnTick != nil {
+				cfg.OnTick(ts)
+			}
 		}
 	}
 }
@@ -194,11 +206,17 @@ func logObservationStats(log *logrus.Entry, obs []Observation, now time.Time) {
 }
 
 func pushSamples(ctx context.Context, s Sink, samples []Sample) {
+	pushSamplesErr(ctx, s, samples)
+}
+
+func pushSamplesErr(ctx context.Context, s Sink, samples []Sample) error {
 	if len(samples) == 0 {
-		return
+		return nil
 	}
 	log := LoggerFromContext(ctx)
 	if err := s.Push(ctx, samples); err != nil {
 		log.WithError(err).WithField("count", len(samples)).Error("push failed")
+		return err
 	}
+	return nil
 }

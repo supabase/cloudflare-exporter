@@ -50,9 +50,8 @@ eng := converge.NewEngine(cfg)
 // Feed observations. Returns samples for any tracker that just stabilized.
 samples := eng.Ingest(observations)
 
-// Check TTLs. Returns forced-push samples from expiring windows.
-// Removes closed windows.
-samples = eng.Expire(time.Now())
+// Expire windows older than Lookback. Returns forced-push samples.
+samples = eng.Expire(time.Now(), true)
 
 // Graceful shutdown: flush best-known values for all open windows.
 samples = eng.Flush()
@@ -141,9 +140,8 @@ Ingest/Expire/Flush yourself.
 ```go
 converge.Config{
     Threshold:            3,              // identical observations to stabilize
-    WindowTTL:            15 * time.Minute, // window lifespan
     PollInterval:         30 * time.Second, // live lane tick
-    Lookback:             10 * time.Minute, // live query range
+    Lookback:             10 * time.Minute, // live query range and window TTL
     MaxBackfill:          2 * time.Hour,    // startup backfill cap
     BackfillChunk:        10 * time.Minute, // time range per backfill call
     BackfillCallsPerTick: 1,               // API budget for backfill per tick
@@ -156,6 +154,31 @@ Presets:
 Eager:        Threshold=1  -- push on first sight, correct later
 Conservative: Threshold=3  -- wait for convergence, push once
 ```
+
+## Prometheus metrics
+
+The root package registers per-tick counters and gauges on `/metrics`,
+labeled by `component` (`converge` or `converge-dns`). These help tune
+Threshold, Lookback, and MaxBackfill by making the tradeoffs observable.
+
+| Metric | Type | What it tells you |
+|--------|------|-------------------|
+| `converge_ingest_samples_total` | counter | Tracker stabilizations. Responds to threshold tuning. |
+| `converge_post_stabilize_updates_total` | counter | Values that changed after push. High = threshold too low. |
+| `converge_expire_flushes_total` | counter | Windows force-flushed without stabilizing. High = threshold too high. |
+| `converge_expire_samples_total` | counter | Samples from TTL expiry (corrections on eviction). |
+| `converge_live_fetch_observations_total` | counter | Raw observation volume from CF live fetches. |
+| `converge_backfill_fetch_observations_total` | counter | Raw observation volume from backfill. |
+| `converge_snapshot_samples_total` | counter | Samples in the post-backfill snapshot. |
+| `converge_open_windows` | gauge | Current active windows. |
+| `converge_tracker_count` | gauge | Current active trackers. |
+| `converge_push_errors_total` | counter | Failed pushes to sink. |
+
+Tuning signals:
+
+- `post_stabilize_updates` climbing: threshold is too low, pushing before CF data settles.
+- `expire_flushes` climbing: threshold is too high, values never converge within the lookback window.
+- `open_windows` growing without bound: expire boundary issue or backfill stuck.
 
 ## Integration
 
@@ -242,6 +265,72 @@ The seed query uses `last_over_time({selector}[MaxBackfill])` against
 the VM query endpoint, derived from the write endpoint.
 
 Reference: [VictoriaMetrics Storage, Retention, Merging, and Deduplication](https://victoriametrics.com/blog/vmstorage-retention-merging-deduplication/)
+
+## Why gauge-to-counter conversion is fundamentally hard
+
+Cloudflare's API returns **gauges**: independent per-minute counts. Each
+bucket stands alone. "742 requests in the 14:10 minute" has no relationship
+to any other bucket.
+
+Our dashboards expect **counters**: a monotonically increasing value where
+`rate()` computes the derivative. Counter at 14:10 = sum of all gauges from
+the beginning of time.
+
+The conversion (prefix sum) creates three problems that don't exist with
+raw gauges:
+
+**1. State that outlives a process.** A gauge is stateless. A counter
+carries accumulated history. When the exporter restarts, the accumulated
+base is lost. The counter resets to near zero, and `rate()` interprets the
+drop as either a reset (handled) or a massive negative spike (not handled
+by VM's "highest value wins" dedup). Gauges don't have this problem because
+each value is self-contained.
+
+**2. Ordering dependencies between writes.** With gauges, you can push
+bucket 14:10 before 14:05 and nothing goes wrong. With counters, the value
+at 14:10 depends on every bucket before it. If a backfill chunk arrives and
+inserts earlier data, all later counter values shift (the cascade). You must
+either serialize all writes or suppress intermediate states. Gauges have no
+such dependency.
+
+**3. Corrections amplify instead of replacing.** When CF revises a gauge
+(700 to 742), it's a simple overwrite. When we convert to a counter, that
++42 correction cascades forward: every subsequent counter shifts by +42 and
+gets re-pushed. Combined with VM's "highest value wins" dedup, the old
+higher values from before the correction persist forever. Gauges just
+overwrite in place.
+
+### The core tension
+
+We're trying to maintain a **cumulative running total** from a source that
+provides **independent snapshots**, push it to a store that **doesn't
+support last-write-wins**, and do it across **process restarts** without
+losing the accumulated state.
+
+Each of those properties in isolation is manageable. Together they create a
+combinatorial surface of edge cases: restart + backfill + correction + dedup
+= spike artifacts that are permanent in VM.
+
+### What we've built to manage it
+
+- Suppress + snapshot (don't push during backfill, push final state once)
+- Chain base seeding (read back last value from VM on restart)
+- Expire boundary fix (prevent double-counting at the lookback edge)
+- Label sort normalization (prevent duplicate chains)
+- Prometheus observability counters (make tuning data-driven)
+- Integration tests + fixture capture (reproduce and regression-test spikes)
+
+Each fix addresses a real incident, but the root cause is the same:
+counters have global state, gauges don't.
+
+### The alternative
+
+Push gauges to VM and let the query layer compute `sum(increase(...))`
+instead of `rate()`. This eliminates all the complexity above: no chain
+state, no base seeding, no cascade, no dedup sensitivity, no restart
+artifacts. The tradeoff is that existing dashboards using `rate()` would
+need to change, and `increase()` over gauges is slightly less ergonomic
+than `rate()` over counters.
 
 ## File layout
 
