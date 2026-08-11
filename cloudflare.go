@@ -13,6 +13,7 @@ import (
 	cf "github.com/cloudflare/cloudflare-go/v7"
 	cfaccounts "github.com/cloudflare/cloudflare-go/v7/accounts"
 	cfcustomhostnames "github.com/cloudflare/cloudflare-go/v7/custom_hostnames"
+	cfdns "github.com/cloudflare/cloudflare-go/v7/dns"
 	cfload_balancers "github.com/cloudflare/cloudflare-go/v7/load_balancers"
 	cfpagination "github.com/cloudflare/cloudflare-go/v7/packages/pagination"
 	cfrulesets "github.com/cloudflare/cloudflare-go/v7/rulesets"
@@ -1110,4 +1111,16 @@ func fetchCustomHostnamesQuota(ctx context.Context, zoneID string) (*customHostn
 	}
 
 	return &response.Result, nil
+}
+
+func fetchZoneDNSRecordUsage(ctx context.Context, zoneID string) (*cfdns.UsageZoneGetResponse, error) {
+	return cfclient.DNS.Usage.Zone.Get(ctx, cfdns.UsageZoneGetParams{
+		ZoneID: cf.F(zoneID),
+	})
+}
+
+func fetchAccountDNSRecordUsage(ctx context.Context, accountID string) (*cfdns.UsageAccountGetResponse, error) {
+	return cfclient.DNS.Usage.Account.Get(ctx, cfdns.UsageAccountGetParams{
+		AccountID: cf.F(accountID),
+	})
 }

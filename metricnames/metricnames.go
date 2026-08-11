@@ -60,6 +60,12 @@ const (
 	AccountCustomHostnamesQuotaAllocated = "cloudflare_account_custom_hostnames_quota_allocated"
 	AccountCustomHostnamesQuotaUsed      = "cloudflare_account_custom_hostnames_quota_used"
 
+	// DNS record quotas
+	ZoneDNSRecordQuotaAllocated    = "cloudflare_zone_dns_record_quota_allocated"
+	ZoneDNSRecordQuotaUsed         = "cloudflare_zone_dns_record_quota_used"
+	AccountDNSRecordQuotaAllocated = "cloudflare_account_dns_record_quota_allocated"
+	AccountDNSRecordQuotaUsed      = "cloudflare_account_dns_record_quota_used"
+
 	// DNS analytics — converge-only, no scrape path equivalent
 	ZoneDNSQueriesTotal  = "cloudflare_zone_dns_queries_total"
 	ZoneDNSStaleTotal    = "cloudflare_zone_dns_stale_total"

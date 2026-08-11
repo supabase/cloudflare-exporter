@@ -130,6 +130,7 @@ func fetchMetrics(ctx context.Context, accounts []cfaccounts.Account, zones []cf
 		wg.Go(func() { fetchLogpushAnalyticsForAccount(ctx, a) })
 		wg.Go(func() { fetchR2StorageForAccount(ctx, a) })
 		wg.Go(func() { fetchLoadblancerPoolsHealth(ctx, a) })
+		wg.Go(func() { fetchAccountDNSRecordQuota(ctx, a) })
 	}
 
 	// if target zones weren't provided, pull zones each loop
@@ -148,6 +149,7 @@ func fetchMetrics(ctx context.Context, accounts []cfaccounts.Account, zones []cf
 		wg.Go(func() { fetchLoadBalancerAnalytics(ctx, zonesChunk) })
 		wg.Go(func() { fetchLogpushAnalyticsForZone(ctx, zonesChunk) })
 		wg.Go(func() { fetchCustomHostnamesMetrics(ctx, zonesChunk) })
+		wg.Go(func() { fetchZoneDNSRecordQuota(ctx, zonesChunk) })
 	}
 
 	wg.Wait()

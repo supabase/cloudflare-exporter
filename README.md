@@ -123,6 +123,10 @@ Note: `ZONE_<name>` configuration is not supported as flag.
 # HELP cloudflare_r2_operation_count Number of operations performed by R2
 # HELP cloudflare_r2_storage_bytes Storage used by R2
 # HELP cloudflare_r2_storage_total_bytes Total storage used by R2
+# HELP cloudflare_zone_dns_record_quota_allocated Allocated DNS record quota for the zone. Absent when the account-level quota applies
+# HELP cloudflare_zone_dns_record_quota_used Number of DNS records in the zone
+# HELP cloudflare_account_dns_record_quota_allocated Allocated DNS record quota for the account. Absent when the zone-level quota applies
+# HELP cloudflare_account_dns_record_quota_used Number of DNS records across all public zones in the account
 ```
 
 ## Helm chart repository
