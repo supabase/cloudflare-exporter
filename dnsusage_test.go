@@ -2,38 +2,14 @@ package main
 
 import (
 	"context"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 
-	cf "github.com/cloudflare/cloudflare-go/v7"
 	cfaccounts "github.com/cloudflare/cloudflare-go/v7/accounts"
-	cfoption "github.com/cloudflare/cloudflare-go/v7/option"
 	cfzones "github.com/cloudflare/cloudflare-go/v7/zones"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 )
-
-// serveDNSUsage points the package level cfclient at a test server that answers
-// every request with body, restoring the original client when the test ends.
-func serveDNSUsage(t *testing.T, body string) {
-	t.Helper()
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(body))
-	}))
-	t.Cleanup(srv.Close)
-
-	original := cfclient
-	t.Cleanup(func() { cfclient = original })
-
-	cfclient = cf.NewClient(
-		cfoption.WithAPIToken("test-token"),
-		cfoption.WithBaseURL(srv.URL+"/"),
-	)
-}
 
 // enableDNSRecordQuotaGauges marks the DNS record quota gauges registered so
 // that Set() is not a no-op, and clears them before and after the test.
@@ -79,7 +55,7 @@ func TestFetchZoneDNSRecordQuota(t *testing.T) {
 
 	t.Run("zone level quota is exported", func(t *testing.T) {
 		enableDNSRecordQuotaGauges(t)
-		serveDNSUsage(t, `{"success":true,"errors":[],"messages":[],"result":{"record_quota":3500,"record_usage":42}}`)
+		serveCloudflareAPI(t, `{"success":true,"errors":[],"messages":[],"result":{"record_quota":3500,"record_usage":42}}`)
 
 		fetchZoneDNSRecordQuota(dnsRecordQuotaCtx(), zones)
 
@@ -89,7 +65,7 @@ func TestFetchZoneDNSRecordQuota(t *testing.T) {
 
 	t.Run("null quota emits no allocated series", func(t *testing.T) {
 		enableDNSRecordQuotaGauges(t)
-		serveDNSUsage(t, `{"success":true,"errors":[],"messages":[],"result":{"record_quota":null,"record_usage":42}}`)
+		serveCloudflareAPI(t, `{"success":true,"errors":[],"messages":[],"result":{"record_quota":null,"record_usage":42}}`)
 
 		fetchZoneDNSRecordQuota(dnsRecordQuotaCtx(), zones)
 
@@ -100,7 +76,7 @@ func TestFetchZoneDNSRecordQuota(t *testing.T) {
 
 	t.Run("skips when no metric is enabled", func(t *testing.T) {
 		enableDNSRecordQuotaGauges(t)
-		serveDNSUsage(t, `{"success":true,"errors":[],"messages":[],"result":{"record_quota":3500,"record_usage":42}}`)
+		serveCloudflareAPI(t, `{"success":true,"errors":[],"messages":[],"result":{"record_quota":3500,"record_usage":42}}`)
 
 		now := time.Now()
 		ctx := ContextWithMetricsCtx(context.Background(), now.Add(-time.Minute), now, MetricsMap{})
@@ -116,7 +92,7 @@ func TestFetchAccountDNSRecordQuota(t *testing.T) {
 
 	t.Run("account level quota is exported", func(t *testing.T) {
 		enableDNSRecordQuotaGauges(t)
-		serveDNSUsage(t, `{"success":true,"errors":[],"messages":[],"result":{"record_quota":12000,"record_usage":150}}`)
+		serveCloudflareAPI(t, `{"success":true,"errors":[],"messages":[],"result":{"record_quota":12000,"record_usage":150}}`)
 
 		fetchAccountDNSRecordQuota(dnsRecordQuotaCtx(), account)
 
@@ -126,7 +102,7 @@ func TestFetchAccountDNSRecordQuota(t *testing.T) {
 
 	t.Run("null quota emits no allocated series", func(t *testing.T) {
 		enableDNSRecordQuotaGauges(t)
-		serveDNSUsage(t, `{"success":true,"errors":[],"messages":[],"result":{"record_quota":null,"record_usage":150}}`)
+		serveCloudflareAPI(t, `{"success":true,"errors":[],"messages":[],"result":{"record_quota":null,"record_usage":150}}`)
 
 		fetchAccountDNSRecordQuota(dnsRecordQuotaCtx(), account)
 

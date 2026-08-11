@@ -4,11 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"slices"
 	"strings"
-
-	"github.com/spf13/viper"
 
 	cf "github.com/cloudflare/cloudflare-go/v7"
 	cfaccounts "github.com/cloudflare/cloudflare-go/v7/accounts"
@@ -1071,26 +1068,8 @@ func fetchCustomHostnamesCount(ctx context.Context, zoneID string) (int, error) 
 }
 
 func fetchCustomHostnamesQuota(ctx context.Context, zoneID string) (*customHostnameQuota, error) {
-	// Use direct HTTP call since this is an undocumented endpoint not in the SDK
-	url := fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/custom_hostnames/quota", zoneID)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	// Add authentication header
-	apiToken := viper.GetString("cf_api_token")
-	if apiToken != "" {
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", apiToken))
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute request: %w", err)
-	}
-	defer resp.Body.Close()
-
+	// This endpoint has no typed service in the SDK, so go through the generic
+	// request helper. It still inherits auth, cf_timeout, retries and base URL.
 	var response struct {
 		Result  customHostnameQuota `json:"result"`
 		Success bool                `json:"success"`
@@ -1099,8 +1078,9 @@ func fetchCustomHostnamesQuota(ctx context.Context, zoneID string) (*customHostn
 		} `json:"errors"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
+	path := fmt.Sprintf("zones/%s/custom_hostnames/quota", zoneID)
+	if err := cfclient.Get(ctx, path, nil, &response); err != nil {
+		return nil, fmt.Errorf("failed to fetch custom hostnames quota: %w", err)
 	}
 
 	if !response.Success {
