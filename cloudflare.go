@@ -10,14 +10,14 @@ import (
 
 	"github.com/spf13/viper"
 
-	cf "github.com/cloudflare/cloudflare-go/v4"
-	cfaccounts "github.com/cloudflare/cloudflare-go/v4/accounts"
-	cfcustomhostnames "github.com/cloudflare/cloudflare-go/v4/custom_hostnames"
-	cfload_balancers "github.com/cloudflare/cloudflare-go/v4/load_balancers"
-	cfpagination "github.com/cloudflare/cloudflare-go/v4/packages/pagination"
-	cfrulesets "github.com/cloudflare/cloudflare-go/v4/rulesets"
-	cfworkers "github.com/cloudflare/cloudflare-go/v4/workers"
-	cfzones "github.com/cloudflare/cloudflare-go/v4/zones"
+	cf "github.com/cloudflare/cloudflare-go/v7"
+	cfaccounts "github.com/cloudflare/cloudflare-go/v7/accounts"
+	cfcustomhostnames "github.com/cloudflare/cloudflare-go/v7/custom_hostnames"
+	cfload_balancers "github.com/cloudflare/cloudflare-go/v7/load_balancers"
+	cfpagination "github.com/cloudflare/cloudflare-go/v7/packages/pagination"
+	cfrulesets "github.com/cloudflare/cloudflare-go/v7/rulesets"
+	cfworkers "github.com/cloudflare/cloudflare-go/v7/workers"
+	cfzones "github.com/cloudflare/cloudflare-go/v7/zones"
 )
 
 const (
@@ -443,7 +443,7 @@ func getWorkerDeployments(ctx context.Context, accountID string) ([]DeployedVers
 		}
 
 		script := page.Current()
-		rep, err := cfclient.Workers.Scripts.Deployments.Get(ctx, script.ID, cfworkers.ScriptDeploymentGetParams{
+		rep, err := cfclient.Workers.Scripts.Deployments.List(ctx, script.ID, cfworkers.ScriptDeploymentListParams{
 			AccountID: cf.F(accountID),
 		})
 		if err != nil {

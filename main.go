@@ -21,10 +21,10 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	cf "github.com/cloudflare/cloudflare-go/v4"
-	cfaccounts "github.com/cloudflare/cloudflare-go/v4/accounts"
-	cfoption "github.com/cloudflare/cloudflare-go/v4/option"
-	cfzones "github.com/cloudflare/cloudflare-go/v4/zones"
+	cf "github.com/cloudflare/cloudflare-go/v7"
+	cfaccounts "github.com/cloudflare/cloudflare-go/v7/accounts"
+	cfoption "github.com/cloudflare/cloudflare-go/v7/option"
+	cfzones "github.com/cloudflare/cloudflare-go/v7/zones"
 	"github.com/lablabs/cloudflare-exporter/converge"
 	"github.com/sirupsen/logrus"
 )

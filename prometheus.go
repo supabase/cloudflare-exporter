@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 
-	cfaccounts "github.com/cloudflare/cloudflare-go/v4/accounts"
-	cfzones "github.com/cloudflare/cloudflare-go/v4/zones"
+	cfaccounts "github.com/cloudflare/cloudflare-go/v7/accounts"
+	cfzones "github.com/cloudflare/cloudflare-go/v7/zones"
 	"github.com/lablabs/cloudflare-exporter/metricnames"
 	"github.com/prometheus/client_golang/prometheus"
 )

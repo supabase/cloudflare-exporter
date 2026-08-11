@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"time"
 
-	cfzones "github.com/cloudflare/cloudflare-go/v4/zones"
+	cfzones "github.com/cloudflare/cloudflare-go/v7/zones"
 	"github.com/lablabs/cloudflare-exporter/cfgql"
 	"github.com/lablabs/cloudflare-exporter/converge"
 	"github.com/lablabs/cloudflare-exporter/metricnames"
