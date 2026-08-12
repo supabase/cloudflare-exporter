@@ -4,7 +4,7 @@ import (
 	"context"
 	"slices"
 
-	cfzones "github.com/cloudflare/cloudflare-go/v4/zones"
+	cfzones "github.com/cloudflare/cloudflare-go/v7/zones"
 	"github.com/lablabs/cloudflare-exporter/converge"
 )
 

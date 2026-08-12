@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 
-	cfaccounts "github.com/cloudflare/cloudflare-go/v4/accounts"
-	cfzones "github.com/cloudflare/cloudflare-go/v4/zones"
+	cfaccounts "github.com/cloudflare/cloudflare-go/v7/accounts"
+	cfzones "github.com/cloudflare/cloudflare-go/v7/zones"
 	"github.com/lablabs/cloudflare-exporter/metricnames"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -63,6 +63,10 @@ const (
 	zoneCustomHostnamesTotalMetricName             MetricName = metricnames.ZoneCustomHostnamesTotal
 	accountCustomHostnamesQuotaAllocatedMetricName MetricName = metricnames.AccountCustomHostnamesQuotaAllocated
 	accountCustomHostnamesQuotaUsedMetricName      MetricName = metricnames.AccountCustomHostnamesQuotaUsed
+	zoneDNSRecordQuotaAllocatedMetricName          MetricName = metricnames.ZoneDNSRecordQuotaAllocated
+	zoneDNSRecordQuotaUsedMetricName               MetricName = metricnames.ZoneDNSRecordQuotaUsed
+	accountDNSRecordQuotaAllocatedMetricName       MetricName = metricnames.AccountDNSRecordQuotaAllocated
+	accountDNSRecordQuotaUsedMetricName            MetricName = metricnames.AccountDNSRecordQuotaUsed
 
 	// DNS analytics — no scrape path equivalent, converge-only.
 	zoneDNSQueriesMetricName  MetricName = metricnames.ZoneDNSQueriesTotal
@@ -429,6 +433,26 @@ var (
 		Help: "Used custom hostnames quota for the account",
 	}, []string{"account"}))
 
+	zoneDNSRecordQuotaAllocated = NewTrackedGauge(prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: zoneDNSRecordQuotaAllocatedMetricName.String(),
+		Help: "Allocated DNS record quota for the zone. Absent when the account-level quota applies",
+	}, []string{"zone", "account"}))
+
+	zoneDNSRecordQuotaUsed = NewTrackedGauge(prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: zoneDNSRecordQuotaUsedMetricName.String(),
+		Help: "Number of DNS records in the zone",
+	}, []string{"zone", "account"}))
+
+	accountDNSRecordQuotaAllocated = NewTrackedGauge(prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: accountDNSRecordQuotaAllocatedMetricName.String(),
+		Help: "Allocated DNS record quota for the account. Absent when the zone-level quota applies",
+	}, []string{"account"}))
+
+	accountDNSRecordQuotaUsed = NewTrackedGauge(prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: accountDNSRecordQuotaUsedMetricName.String(),
+		Help: "Number of DNS records across all public zones in the account",
+	}, []string{"account"}))
+
 	metricsMap = MetricsMap{}
 )
 
@@ -479,6 +503,10 @@ func init() {
 	metricsMap[zoneCustomHostnamesTotalMetricName] = zoneCustomHostnamesTotal
 	metricsMap[accountCustomHostnamesQuotaAllocatedMetricName] = accountCustomHostnamesQuotaAllocated
 	metricsMap[accountCustomHostnamesQuotaUsedMetricName] = accountCustomHostnamesQuotaUsed
+	metricsMap[zoneDNSRecordQuotaAllocatedMetricName] = zoneDNSRecordQuotaAllocated
+	metricsMap[zoneDNSRecordQuotaUsedMetricName] = zoneDNSRecordQuotaUsed
+	metricsMap[accountDNSRecordQuotaAllocatedMetricName] = accountDNSRecordQuotaAllocated
+	metricsMap[accountDNSRecordQuotaUsedMetricName] = accountDNSRecordQuotaUsed
 }
 
 func buildDeniedMetricsSet(metricsDenylist []string) MetricsMap {
@@ -1056,4 +1084,42 @@ func fetchCustomHostnamesMetrics(ctx context.Context, zones []cfzones.Zone) {
 			}
 		}
 	}
+}
+
+func fetchZoneDNSRecordQuota(ctx context.Context, zones []cfzones.Zone) {
+	if shouldSkip(ctx, zoneDNSRecordQuotaAllocatedMetricName, zoneDNSRecordQuotaUsedMetricName) {
+		return
+	}
+
+	for _, zone := range zones {
+		usage, err := fetchZoneDNSRecordUsage(ctx, zone.ID)
+		if err != nil {
+			recordError("fetchZoneDNSRecordUsage", fmt.Errorf("failed to fetch DNS record usage for zone %q: %w", zone.Name, err))
+			continue
+		}
+
+		// record_quota is null when the account level quota governs this zone
+		if !usage.JSON.RecordQuota.IsNull() {
+			zoneDNSRecordQuotaAllocated.Set(float64(usage.RecordQuota), zone.Name, zone.Account.Name)
+		}
+		zoneDNSRecordQuotaUsed.Set(float64(usage.RecordUsage), zone.Name, zone.Account.Name)
+	}
+}
+
+func fetchAccountDNSRecordQuota(ctx context.Context, account cfaccounts.Account) {
+	if shouldSkip(ctx, accountDNSRecordQuotaAllocatedMetricName, accountDNSRecordQuotaUsedMetricName) {
+		return
+	}
+
+	usage, err := fetchAccountDNSRecordUsage(ctx, account.ID)
+	if err != nil {
+		recordError("fetchAccountDNSRecordUsage", fmt.Errorf("failed to fetch DNS record usage for account %q: %w", account.ID, err))
+		return
+	}
+
+	// record_quota is null when zone level quotas govern this account
+	if !usage.JSON.RecordQuota.IsNull() {
+		accountDNSRecordQuotaAllocated.Set(float64(usage.RecordQuota), account.Name)
+	}
+	accountDNSRecordQuotaUsed.Set(float64(usage.RecordUsage), account.Name)
 }

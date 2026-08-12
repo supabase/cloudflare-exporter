@@ -21,10 +21,10 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	cf "github.com/cloudflare/cloudflare-go/v4"
-	cfaccounts "github.com/cloudflare/cloudflare-go/v4/accounts"
-	cfoption "github.com/cloudflare/cloudflare-go/v4/option"
-	cfzones "github.com/cloudflare/cloudflare-go/v4/zones"
+	cf "github.com/cloudflare/cloudflare-go/v7"
+	cfaccounts "github.com/cloudflare/cloudflare-go/v7/accounts"
+	cfoption "github.com/cloudflare/cloudflare-go/v7/option"
+	cfzones "github.com/cloudflare/cloudflare-go/v7/zones"
 	"github.com/lablabs/cloudflare-exporter/converge"
 	"github.com/sirupsen/logrus"
 )
@@ -130,6 +130,7 @@ func fetchMetrics(ctx context.Context, accounts []cfaccounts.Account, zones []cf
 		wg.Go(func() { fetchLogpushAnalyticsForAccount(ctx, a) })
 		wg.Go(func() { fetchR2StorageForAccount(ctx, a) })
 		wg.Go(func() { fetchLoadblancerPoolsHealth(ctx, a) })
+		wg.Go(func() { fetchAccountDNSRecordQuota(ctx, a) })
 	}
 
 	// if target zones weren't provided, pull zones each loop
@@ -148,6 +149,7 @@ func fetchMetrics(ctx context.Context, accounts []cfaccounts.Account, zones []cf
 		wg.Go(func() { fetchLoadBalancerAnalytics(ctx, zonesChunk) })
 		wg.Go(func() { fetchLogpushAnalyticsForZone(ctx, zonesChunk) })
 		wg.Go(func() { fetchCustomHostnamesMetrics(ctx, zonesChunk) })
+		wg.Go(func() { fetchZoneDNSRecordQuota(ctx, zonesChunk) })
 	}
 
 	wg.Wait()

@@ -4,20 +4,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"slices"
 	"strings"
 
-	"github.com/spf13/viper"
-
-	cf "github.com/cloudflare/cloudflare-go/v4"
-	cfaccounts "github.com/cloudflare/cloudflare-go/v4/accounts"
-	cfcustomhostnames "github.com/cloudflare/cloudflare-go/v4/custom_hostnames"
-	cfload_balancers "github.com/cloudflare/cloudflare-go/v4/load_balancers"
-	cfpagination "github.com/cloudflare/cloudflare-go/v4/packages/pagination"
-	cfrulesets "github.com/cloudflare/cloudflare-go/v4/rulesets"
-	cfworkers "github.com/cloudflare/cloudflare-go/v4/workers"
-	cfzones "github.com/cloudflare/cloudflare-go/v4/zones"
+	cf "github.com/cloudflare/cloudflare-go/v7"
+	cfaccounts "github.com/cloudflare/cloudflare-go/v7/accounts"
+	cfcustomhostnames "github.com/cloudflare/cloudflare-go/v7/custom_hostnames"
+	cfdns "github.com/cloudflare/cloudflare-go/v7/dns"
+	cfload_balancers "github.com/cloudflare/cloudflare-go/v7/load_balancers"
+	cfpagination "github.com/cloudflare/cloudflare-go/v7/packages/pagination"
+	cfrulesets "github.com/cloudflare/cloudflare-go/v7/rulesets"
+	cfworkers "github.com/cloudflare/cloudflare-go/v7/workers"
+	cfzones "github.com/cloudflare/cloudflare-go/v7/zones"
 )
 
 const (
@@ -443,7 +441,7 @@ func getWorkerDeployments(ctx context.Context, accountID string) ([]DeployedVers
 		}
 
 		script := page.Current()
-		rep, err := cfclient.Workers.Scripts.Deployments.Get(ctx, script.ID, cfworkers.ScriptDeploymentGetParams{
+		rep, err := cfclient.Workers.Scripts.Deployments.List(ctx, script.ID, cfworkers.ScriptDeploymentListParams{
 			AccountID: cf.F(accountID),
 		})
 		if err != nil {
@@ -1070,26 +1068,8 @@ func fetchCustomHostnamesCount(ctx context.Context, zoneID string) (int, error) 
 }
 
 func fetchCustomHostnamesQuota(ctx context.Context, zoneID string) (*customHostnameQuota, error) {
-	// Use direct HTTP call since this is an undocumented endpoint not in the SDK
-	url := fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/custom_hostnames/quota", zoneID)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	// Add authentication header
-	apiToken := viper.GetString("cf_api_token")
-	if apiToken != "" {
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", apiToken))
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute request: %w", err)
-	}
-	defer resp.Body.Close()
-
+	// This endpoint has no typed service in the SDK, so go through the generic
+	// request helper. It still inherits auth, cf_timeout, retries and base URL.
 	var response struct {
 		Result  customHostnameQuota `json:"result"`
 		Success bool                `json:"success"`
@@ -1098,8 +1078,9 @@ func fetchCustomHostnamesQuota(ctx context.Context, zoneID string) (*customHostn
 		} `json:"errors"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
+	path := fmt.Sprintf("zones/%s/custom_hostnames/quota", zoneID)
+	if err := cfclient.Get(ctx, path, nil, &response); err != nil {
+		return nil, fmt.Errorf("failed to fetch custom hostnames quota: %w", err)
 	}
 
 	if !response.Success {
@@ -1110,4 +1091,16 @@ func fetchCustomHostnamesQuota(ctx context.Context, zoneID string) (*customHostn
 	}
 
 	return &response.Result, nil
+}
+
+func fetchZoneDNSRecordUsage(ctx context.Context, zoneID string) (*cfdns.UsageZoneGetResponse, error) {
+	return cfclient.DNS.Usage.Zone.Get(ctx, cfdns.UsageZoneGetParams{
+		ZoneID: cf.F(zoneID),
+	})
+}
+
+func fetchAccountDNSRecordUsage(ctx context.Context, accountID string) (*cfdns.UsageAccountGetResponse, error) {
+	return cfclient.DNS.Usage.Account.Get(ctx, cfdns.UsageAccountGetParams{
+		AccountID: cf.F(accountID),
+	})
 }
