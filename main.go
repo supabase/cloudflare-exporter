@@ -224,6 +224,7 @@ func runExporter() {
 	log.Info("Scrape delay set to ", scrapeDelay)
 
 	appReadiness := newReadinessTracker()
+	vmPushConfigured := viper.GetString(argVMPushEndpoint) != ""
 
 	go func() {
 		accounts := fetchAccounts(ctx)
@@ -236,17 +237,21 @@ func runExporter() {
 		} else {
 			convergeZones = fetchZones(ctx, accounts)
 		}
-		converger, err := setupConverger(ctx, convergeZones, enabledMetrics, gql, appReadiness)
-		if err != nil {
-			log.WithError(err).Error("converge setup failed, skipping")
+		if !vmPushConfigured {
+			log.Info("vm_push_endpoint not configured, skipping converge metrics pipelines")
 		} else {
-			go converger(ctx)
-		}
-		dnsConverger, err := setupDNSConverger(ctx, convergeZones, gql, appReadiness)
-		if err != nil {
-			log.WithError(err).Error("dns converge setup failed, skipping")
-		} else {
-			go dnsConverger(ctx)
+			converger, err := setupConverger(ctx, convergeZones, enabledMetrics, gql, appReadiness)
+			if err != nil {
+				log.WithError(err).Error("converge setup failed, skipping")
+			} else {
+				go converger(ctx)
+			}
+			dnsConverger, err := setupDNSConverger(ctx, convergeZones, gql, appReadiness)
+			if err != nil {
+				log.WithError(err).Error("dns converge setup failed, skipping")
+			} else {
+				go dnsConverger(ctx)
+			}
 		}
 
 		// --- Scrape path: original logic, unchanged from develop ---
@@ -283,9 +288,7 @@ func runExporter() {
 	http.HandleFunc("/health", h.Handler)
 
 	var requiredReadinessComponents []string
-	// todo: this is a bad way to check for intended push failure
-	// ideally converge setup wouldn't be attempted with this option empty
-	if viper.GetString(argVMPushEndpoint) != "" {
+	if vmPushConfigured {
 		requiredReadinessComponents = []string{"requests", "dns"}
 	}
 	http.Handle("/ready", appReadiness.Handler(requiredReadinessComponents))
