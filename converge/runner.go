@@ -55,17 +55,39 @@ func newRunner(cfg Config) *runner {
 	}
 }
 
+// runBackfill drives the runner's backfill phase for one tick. Two
+// independent steps run in sequence:
+//
+//  1. advanceBackfill: only while backfill is still in progress, fetch
+//     historical chunks until the cursor catches up, then mark
+//     backfillDone.
+//  2. pushSnapshot: once backfillDone (whether that just happened above,
+//     was already true from an earlier tick, or was true from
+//     construction because backfill is disabled), push the engine's
+//     settled state exactly once.
 func (r *runner) runBackfill(ctx context.Context, eng *Engine, f Fetcher, s Sink, now time.Time, ts *TickStats, backfillDoneCB func()) {
-	if r.backfillDone {
-		return
-	}
 	log := LoggerFromContext(ctx)
+
+	if !r.backfillDone {
+		r.advanceBackfill(ctx, log, eng, f, now, ts)
+	}
+	if r.backfillDone {
+		r.pushSnapshot(ctx, log, eng, s, now, ts, backfillDoneCB)
+	}
+}
+
+// advanceBackfill fetches up to backfillCallsPerTick historical chunks,
+// ingesting each into eng and advancing the cursor. Sets r.backfillDone
+// once the cursor catches up to the live lookback window. Returns early
+// (without setting backfillDone) on fetch error, so the next tick retries
+// from the same cursor.
+func (r *runner) advanceBackfill(ctx context.Context, log *logrus.Entry, eng *Engine, f Fetcher, now time.Time, ts *TickStats) {
 	limit := now.Add(-r.lookback)
 	for i := 0; i < r.backfillCallsPerTick; i++ {
 		if !r.backfillCursor.Before(limit) {
 			r.backfillDone = true
 			log.Info("backfill complete")
-			break
+			return
 		}
 		end := r.backfillCursor.Add(r.backfillChunk)
 		if end.After(limit) {
@@ -83,12 +105,16 @@ func (r *runner) runBackfill(ctx context.Context, eng *Engine, f Fetcher, s Sink
 		eng.Ingest(obs)
 		r.backfillCursor = end
 	}
+}
 
-	if r.snapshotPushed || !r.backfillDone {
+// pushSnapshot pushes the engine's settled state as a one-shot snapshot the
+// first time it's called after backfill completes. If the push fails, it
+// leaves snapshotPushed false so the next tick retries instead of silently
+// reporting stabilized; backfillDoneCB only fires once the push succeeds.
+func (r *runner) pushSnapshot(ctx context.Context, log *logrus.Entry, eng *Engine, s Sink, now time.Time, ts *TickStats, backfillDoneCB func()) {
+	if r.snapshotPushed {
 		return
 	}
-
-	r.snapshotPushed = true
 
 	st := eng.Stats()
 	log.WithField("oldest_bucket", st.OldestBucket.Format(time.RFC3339)).
@@ -96,7 +122,11 @@ func (r *runner) runBackfill(ctx context.Context, eng *Engine, f Fetcher, s Sink
 		Info("backfill done, pushing snapshot")
 	snapshot := eng.Snapshot()
 	ts.SnapshotSamples = len(snapshot)
-	pushSamples(ctx, s, snapshot)
+	if err := pushSamples(ctx, s, snapshot); err != nil {
+		ts.PushErrors++
+		return
+	}
+	r.snapshotPushed = true
 	eng.EvictStaleChains(now)
 	if backfillDoneCB != nil {
 		backfillDoneCB()
@@ -118,7 +148,7 @@ func (r *runner) runLive(ctx context.Context, eng *Engine, f Fetcher, s Sink, no
 		samples := eng.Ingest(obs)
 		ts.IngestSamples = len(samples)
 		if r.backfillDone {
-			if err := pushSamplesErr(ctx, s, samples); err != nil {
+			if err := pushSamples(ctx, s, samples); err != nil {
 				ts.PushErrors++
 			}
 		}
@@ -127,7 +157,7 @@ func (r *runner) runLive(ctx context.Context, eng *Engine, f Fetcher, s Sink, no
 	expireSamples := eng.Expire(now, r.backfillDone)
 	ts.ExpireSamples = len(expireSamples)
 	if r.backfillDone {
-		if err := pushSamplesErr(ctx, s, expireSamples); err != nil {
+		if err := pushSamples(ctx, s, expireSamples); err != nil {
 			ts.PushErrors++
 		}
 	}
@@ -205,11 +235,7 @@ func logObservationStats(log *logrus.Entry, obs []Observation, now time.Time) {
 		Info("live fetch")
 }
 
-func pushSamples(ctx context.Context, s Sink, samples []Sample) {
-	pushSamplesErr(ctx, s, samples)
-}
-
-func pushSamplesErr(ctx context.Context, s Sink, samples []Sample) error {
+func pushSamples(ctx context.Context, s Sink, samples []Sample) error {
 	if len(samples) == 0 {
 		return nil
 	}
