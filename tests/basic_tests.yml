@@ -12,6 +12,15 @@ testcases:
           - result.statuscode ShouldEqual 200
           - result.body ShouldNotBeEmpty
 
+  - name: Check Readiness endpoint
+    steps:
+      - type: http
+        method: GET
+        url: "{{.baseUrl}}:{{.basePort}}/ready"
+        assertions:
+          - result.statuscode ShouldEqual 200
+          - result.body ShouldNotBeEmpty
+
   - name: Get Cloudflare metrics test case
     steps:
       - type: http

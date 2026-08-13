@@ -223,6 +223,8 @@ func runExporter() {
 	scrapeDelay := viper.GetDuration("scrape_delay")
 	log.Info("Scrape delay set to ", scrapeDelay)
 
+	appReadiness := newReadinessTracker()
+
 	go func() {
 		accounts := fetchAccounts(ctx)
 		tzones := getTargetZones()
@@ -234,13 +236,13 @@ func runExporter() {
 		} else {
 			convergeZones = fetchZones(ctx, accounts)
 		}
-		converger, err := setupConverger(ctx, convergeZones, enabledMetrics, gql)
+		converger, err := setupConverger(ctx, convergeZones, enabledMetrics, gql, appReadiness)
 		if err != nil {
 			log.WithError(err).Error("converge setup failed, skipping")
 		} else {
 			go converger(ctx)
 		}
-		dnsConverger, err := setupDNSConverger(ctx, convergeZones, gql)
+		dnsConverger, err := setupDNSConverger(ctx, convergeZones, gql, appReadiness)
 		if err != nil {
 			log.WithError(err).Error("dns converge setup failed, skipping")
 		} else {
@@ -279,6 +281,14 @@ func runExporter() {
 	http.Handle(cfgMetricsPath, promhttp.Handler())
 	h := health.New(health.Health{})
 	http.HandleFunc("/health", h.Handler)
+
+	var requiredReadinessComponents []string
+	// todo: this is a bad way to check for intended push failure
+	// ideally converge setup wouldn't be attempted with this option empty
+	if viper.GetString(argVMPushEndpoint) != "" {
+		requiredReadinessComponents = []string{"requests", "dns"}
+	}
+	http.Handle("/ready", appReadiness.Handler(requiredReadinessComponents))
 
 	log.Info("Beginning to serve metrics on ", viper.GetString("listen"), cfgMetricsPath)
 
