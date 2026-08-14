@@ -145,6 +145,7 @@ func setupConvergerWithFetcher(ctx context.Context, component string, fetcher co
 		convergePostStabilizeUpdates.WithLabelValues(component).Add(float64(ts.PostStabilizeUpdates))
 		convergeExpireFlushes.WithLabelValues(component).Add(float64(ts.ExpireFlushes))
 		convergeExpireSamples.WithLabelValues(component).Add(float64(ts.ExpireSamples))
+		convergeKeepAliveSamples.WithLabelValues(component).Add(float64(ts.KeepAliveSamples))
 		convergeLiveFetchObservations.WithLabelValues(component).Add(float64(ts.LiveObservations))
 		convergeBackfillFetchObservations.WithLabelValues(component).Add(float64(ts.BackfillObservations))
 		convergeSnapshotSamples.WithLabelValues(component).Add(float64(ts.SnapshotSamples))

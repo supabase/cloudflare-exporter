@@ -277,6 +277,32 @@ func (e *Engine) Snapshot() []Sample {
 	return samples
 }
 
+// KeepAlive returns a Sample re-affirming the current counter value, at
+// timestamp now, for every known key not present in touched. Cloudflare's
+// Adaptive Groups API only returns a group for a (zone, status) pair that
+// had at least one request in the bucket, so a rare status code can go
+// several minutes without appearing at all - Ingest never sees an
+// Observation for it during that gap and never re-emits its counter.
+// Without a fresh sample, that series ages past VictoriaMetrics' staleness
+// window and silently drops out of any sum()/rate()/delta() over the zone's
+// total, producing a phantom drop that reverses the moment the status code
+// reappears. KeepAlive closes that gap by re-pushing the unchanged value at
+// a fresh timestamp every tick that the key has no real observation.
+func (e *Engine) KeepAlive(now time.Time, touched map[string]bool) []Sample {
+	var samples []Sample
+	for sk, ch := range e.chains {
+		if touched[sk] {
+			continue
+		}
+		samples = append(samples, Sample{
+			Key:       ch.key,
+			Value:     ch.Current(),
+			Timestamp: now,
+		})
+	}
+	return samples
+}
+
 // EvictStaleChains evicts all counter chain entries whose bucket is older
 // than Lookback. Used after Snapshot to clean up chain entries that were
 // preserved during backfill (when Expire ran with evictChains=false).

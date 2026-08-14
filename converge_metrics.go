@@ -39,6 +39,15 @@ var (
 		Help: "Samples emitted during window expiry",
 	}, []string{"component"})
 
+	// convergeKeepAliveSamples counts samples re-pushed to keep series with
+	// no live observation this tick from going stale in the sink. High
+	// values are expected for low-traffic status codes; a sustained zero
+	// suggests keep-alive isn't wired up or every series is always touched.
+	convergeKeepAliveSamples = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "converge_keepalive_samples_total",
+		Help: "Samples re-pushed to keep idle series from going stale",
+	}, []string{"component"})
+
 	// convergeLiveFetchObservations counts observations received from
 	// live fetches.
 	convergeLiveFetchObservations = prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -99,6 +108,7 @@ func init() {
 		convergePostStabilizeUpdates,
 		convergeExpireFlushes,
 		convergeExpireSamples,
+		convergeKeepAliveSamples,
 		convergeLiveFetchObservations,
 		convergeBackfillFetchObservations,
 		convergeSnapshotSamples,

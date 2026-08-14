@@ -112,6 +112,15 @@ func (c *counterChain) Len() int {
 	return len(c.entries)
 }
 
+// Current returns the latest cumulative counter value: the most recent
+// entry's counter, or base if every entry has been evicted.
+func (c *counterChain) Current() uint64 {
+	if len(c.entries) == 0 {
+		return c.base
+	}
+	return c.entries[len(c.entries)-1].counter
+}
+
 // Base returns the accumulated sum of evicted buckets.
 func (c *counterChain) Base() uint64 {
 	return c.base

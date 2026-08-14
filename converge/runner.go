@@ -122,6 +122,18 @@ func (r *runner) runLive(ctx context.Context, eng *Engine, f Fetcher, s Sink, no
 				ts.PushErrors++
 			}
 		}
+
+		touched := make(map[string]bool, len(obs))
+		for _, o := range obs {
+			touched[o.Key.String()] = true
+		}
+		keepAlive := eng.KeepAlive(now, touched)
+		ts.KeepAliveSamples = len(keepAlive)
+		if r.backfillDone {
+			if err := pushSamplesErr(ctx, s, keepAlive); err != nil {
+				ts.PushErrors++
+			}
+		}
 	}
 
 	expireSamples := eng.Expire(now, r.backfillDone)

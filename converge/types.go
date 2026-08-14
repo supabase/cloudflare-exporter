@@ -133,6 +133,7 @@ type TickStats struct {
 	LiveObservations     int    // observations from the live fetch
 	BackfillObservations int    // observations from backfill fetches
 	IngestSamples        int    // samples emitted by Ingest
+	KeepAliveSamples     int    // samples re-pushed to keep idle series from going stale
 	ExpireSamples        int    // samples emitted by Expire
 	ExpireFlushes        uint64 // windows force-flushed (never stabilized)
 	SnapshotSamples      int    // samples emitted by post-backfill Snapshot
