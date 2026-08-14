@@ -20,6 +20,14 @@ type Config struct {
 	BackfillChunk        time.Duration // time range per backfill Fetch call
 	BackfillCallsPerTick int           // max Fetch calls for backfill per tick
 
+	// KeepAlive: how long a key may go without a real observation before
+	// it's allowed to go stale. Larger values ride out legitimately quiet
+	// low-traffic keys (e.g. a rare 5xx status code) without flapping out
+	// of aggregate queries; too large delays how long a genuine, sustained
+	// upstream outage takes to surface via CloudflareZoneRequestsMetricMissing,
+	// since KeepAlive would otherwise keep re-pushing frozen values forever.
+	MaxKeepAliveIdle time.Duration
+
 	// Callbacks (optional).
 	OnTick func(TickStats) // called after each runner tick with per-tick stats
 }
@@ -33,6 +41,7 @@ func DefaultConfig() Config {
 		MaxBackfill:          2 * time.Hour,
 		BackfillChunk:        10 * time.Minute,
 		BackfillCallsPerTick: 3,
+		MaxKeepAliveIdle:     30 * time.Minute,
 	}
 }
 
@@ -59,6 +68,7 @@ type Engine struct {
 	cfg                 Config
 	windows             map[time.Time]*window
 	chains              map[string]*chainWithKey // per-key counter accumulation
+	lastSeen            map[string]time.Time     // per-key bucket time of the most recent real observation
 	expireCount         uint64
 	postStabilizeUpdate uint64
 	oldestBucket        time.Time // low water mark: earliest bucket ever ingested
@@ -78,9 +88,10 @@ func NewEngine(cfg Config) *Engine {
 		cfg.Threshold = 1
 	}
 	return &Engine{
-		cfg:     cfg,
-		windows: make(map[time.Time]*window),
-		chains:  make(map[string]*chainWithKey),
+		cfg:      cfg,
+		windows:  make(map[time.Time]*window),
+		chains:   make(map[string]*chainWithKey),
+		lastSeen: make(map[string]time.Time),
 	}
 }
 
@@ -116,6 +127,10 @@ func (e *Engine) Ingest(obs []Observation) []Sample {
 		}
 
 		sk := o.Key.String()
+		if last, ok := e.lastSeen[sk]; !ok || o.Bucket.After(last) {
+			e.lastSeen[sk] = o.Bucket
+		}
+
 		te := w.trackers[sk]
 		if te == nil {
 			te = &trackerEntry{key: o.Key, tracker: newTracker(e.cfg.Threshold)}
@@ -292,6 +307,9 @@ func (e *Engine) KeepAlive(now time.Time, touched map[string]bool) []Sample {
 	var samples []Sample
 	for sk, ch := range e.chains {
 		if touched[sk] {
+			continue
+		}
+		if last, ok := e.lastSeen[sk]; ok && now.Sub(last) > e.cfg.MaxKeepAliveIdle {
 			continue
 		}
 		samples = append(samples, Sample{

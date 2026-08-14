@@ -55,3 +55,40 @@ func TestKeepAliveIgnoresKeysNeverObserved(t *testing.T) {
 	e := NewEngine(cfg(1))
 	assert.Empty(t, e.KeepAlive(t0, map[string]bool{}), "nothing to keep alive before any observation has arrived")
 }
+
+// TestKeepAliveStopsAfterMaxIdle guards against KeepAlive itself masking a
+// genuine, sustained data outage. Without a cap, a key would be kept "alive"
+// forever regardless of how long it's actually been since real data arrived,
+// which would stop CloudflareZoneRequestsMetricMissing from ever firing
+// during a real Cloudflare API outage (see cfgql.FetchZones, which currently
+// swallows per-chunk fetch errors and returns a nil error either way).
+func TestKeepAliveStopsAfterMaxIdle(t *testing.T) {
+	c := cfg(1)
+	c.MaxKeepAliveIdle = 10 * time.Minute
+	e := NewEngine(c)
+
+	e.Ingest([]Observation{obs("cf_5xx_555", 1, t0)})
+
+	stillIdle := t0.Add(9 * time.Minute)
+	samples := e.KeepAlive(stillIdle, map[string]bool{})
+	require.Len(t, samples, 1, "within the idle cap, keep the series alive")
+
+	pastCap := t0.Add(11 * time.Minute)
+	assert.Empty(t, e.KeepAlive(pastCap, map[string]bool{}), "past the idle cap, let it lapse so a sustained outage can still surface")
+}
+
+func TestKeepAliveIdleClockResetsOnRealObservation(t *testing.T) {
+	c := cfg(1)
+	c.MaxKeepAliveIdle = 10 * time.Minute
+	e := NewEngine(c)
+
+	e.Ingest([]Observation{obs("cf_5xx_555", 1, t0)})
+
+	t1 := t0.Add(9 * time.Minute)
+	e.Ingest([]Observation{obs("cf_5xx_555", 1, t1)}) // unchanged value, but still a real observation
+
+	// 9 minutes after the second observation, well within cap, even though
+	// it's 18 minutes after the first one.
+	samples := e.KeepAlive(t1.Add(9*time.Minute), map[string]bool{})
+	require.Len(t, samples, 1, "a later real observation should reset the idle clock")
+}
