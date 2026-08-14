@@ -66,6 +66,44 @@ func TestFlattenAdaptiveGroupsZeroFillsKnownAbsentStatus(t *testing.T) {
 	assert.Equal(t, uint64(0), values["507"])
 }
 
+// TestFlattenAdaptiveGroupsBackfillsWithinSingleMultiMinuteBatch covers the
+// real call shape: Lookback/BackfillChunk mean every actual Fetch spans many
+// minutes at once, not one. A status seen only in the newest minute of a
+// batch must still zero-fill into the earlier minutes of that same batch -
+// each of those minutes' rows is independently authoritative regardless of
+// when the exporter first learned the status exists.
+func TestFlattenAdaptiveGroupsBackfillsWithinSingleMultiMinuteBatch(t *testing.T) {
+	f := &Fetcher{knownStatuses: make(map[string]map[int]bool)}
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	t1 := t0.Add(time.Minute)
+	t2 := t0.Add(2 * time.Minute)
+
+	obs := f.flattenHTTPAdaptiveGroups(adaptiveZoneData{
+		ZoneTag: "zone1",
+		HTTPAdaptiveGroups: []httpAdaptiveGroup{
+			mkAdaptiveGroup(t0, 500, 100),
+			mkAdaptiveGroup(t1, 500, 110),
+			mkAdaptiveGroup(t2, 500, 120),
+			mkAdaptiveGroup(t2, 507, 3), // 507 only shows up in the newest minute
+		},
+	}, "supabase.co", nil)
+
+	byBucketStatus := map[time.Time]map[string]uint64{}
+	for _, o := range obs {
+		if byBucketStatus[o.Bucket] == nil {
+			byBucketStatus[o.Bucket] = map[string]uint64{}
+		}
+		byBucketStatus[o.Bucket][statusLabel(o)] = o.Value
+	}
+
+	require.Contains(t, byBucketStatus, t0)
+	require.Contains(t, byBucketStatus, t1)
+	require.Contains(t, byBucketStatus, t2)
+	assert.Equal(t, uint64(0), byBucketStatus[t0]["507"], "507 must be zero-filled into t0 even though it's only ever seen at t2")
+	assert.Equal(t, uint64(0), byBucketStatus[t1]["507"], "507 must be zero-filled into t1 even though it's only ever seen at t2")
+	assert.Equal(t, uint64(3), byBucketStatus[t2]["507"])
+}
+
 func TestFlattenAdaptiveGroupsNeverSeenStatusNotZeroFilled(t *testing.T) {
 	f := &Fetcher{knownStatuses: make(map[string]map[int]bool)}
 	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
