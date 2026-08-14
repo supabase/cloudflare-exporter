@@ -24,6 +24,14 @@ type Fetcher struct {
 	client  cfgql.GQLClient
 	zones   []cfzones.Zone
 	enabled map[string]bool // metric suffixes to emit; nil = emit all
+
+	// knownStatuses tracks, per zone, every edge response status ever seen
+	// on the adaptive (v2) path. Used to zero-fill a status that Cloudflare's
+	// response for a given minute doesn't mention - which means zero
+	// requests with that status that minute, not "unknown". Fetch is driven
+	// by a single ticker loop (see converge.Run), so this is never accessed
+	// concurrently.
+	knownStatuses map[string]map[int]bool
 }
 
 // New creates a Fetcher that queries the given zones using the provided
@@ -31,7 +39,12 @@ type Fetcher struct {
 // before passing them in. If enabled is non-nil, only metric suffixes present
 // in the map are emitted as observations.
 func New(client cfgql.GQLClient, zones []cfzones.Zone, enabled map[string]bool) *Fetcher {
-	return &Fetcher{client: client, zones: zones, enabled: enabled}
+	return &Fetcher{
+		client:        client,
+		zones:         zones,
+		enabled:       enabled,
+		knownStatuses: make(map[string]map[int]bool),
+	}
 }
 
 func (f *Fetcher) Fetch(ctx context.Context, start, end time.Time) ([]converge.Observation, error) {
@@ -57,7 +70,7 @@ func (f *Fetcher) Fetch(ctx context.Context, start, end time.Time) ([]converge.O
 		}
 		var obs []converge.Observation
 		for _, z := range resp.Viewer.Zones {
-			obs = append(obs, flattenHTTPAdaptiveGroups(z, cfgql.FindZoneName(chunk, z.ZoneTag), f.enabled)...)
+			obs = append(obs, f.flattenHTTPAdaptiveGroups(z, cfgql.FindZoneName(chunk, z.ZoneTag), f.enabled)...)
 		}
 		return obs, nil
 	})
@@ -250,23 +263,68 @@ func (f *Fetcher) fetchAdaptiveRange(ctx context.Context, zoneIDs []string, star
 	return &resp, nil
 }
 
-func flattenHTTPAdaptiveGroups(z adaptiveZoneData, zoneName string, enabled map[string]bool) []converge.Observation {
+// flattenHTTPAdaptiveGroups converts one zone's adaptive groups response into
+// Observations, zero-filling any previously-seen status code that this
+// minute's response doesn't mention.
+//
+// Cloudflare's response is authoritative for what it returns: a minute row
+// that comes back at all lists every status that occurred, so a known status
+// missing from it had zero requests that minute - that's not ambiguous data,
+// it's a confirmed zero. Without the zero-fill, Engine.Ingest never sees an
+// Observation for that key, never re-emits its counter, and the series ages
+// out of VictoriaMetrics' staleness window - dropping out of any
+// sum()/rate()/delta() over the zone's total and producing a phantom drop
+// that "recovers" the instant the status code reappears. That's what was
+// driving the CloudflareZone5xxZscoreWarn noise.
+//
+// This can only ever zero-fill a (zone, minute) that a fetch actually
+// returned data for, so it can't mask a genuine fetch failure: if the whole
+// chunk fetch errors, this function never runs for that zone, and its keys
+// fall through to real staleness as before.
+func (f *Fetcher) flattenHTTPAdaptiveGroups(z adaptiveZoneData, zoneName string, enabled map[string]bool) []converge.Observation {
 	const metric = metricnames.ZoneRequestsStatusV2
 	if enabled != nil && !enabled[metric] {
 		return nil
 	}
 
-	var obs []converge.Observation
+	known := f.knownStatuses[z.ZoneTag]
+	if known == nil {
+		known = make(map[int]bool)
+		f.knownStatuses[z.ZoneTag] = known
+	}
+
+	byBucket := make(map[time.Time]map[int]uint64)
 	for _, g := range z.HTTPAdaptiveGroups {
 		bucket, err := time.Parse(time.RFC3339, g.Dimensions.DatetimeMinute)
 		if err != nil {
 			continue
 		}
-		obs = append(obs, converge.Observation{
-			Key:    converge.NewKey(metric, "zone", zoneName, "status", fmt.Sprintf("%d", g.Dimensions.EdgeResponseStatus)),
-			Value:  g.Count,
-			Bucket: bucket,
-		})
+		if byBucket[bucket] == nil {
+			byBucket[bucket] = make(map[int]uint64)
+		}
+		byBucket[bucket][g.Dimensions.EdgeResponseStatus] = g.Count
+		known[g.Dimensions.EdgeResponseStatus] = true
+	}
+
+	var obs []converge.Observation
+	for bucket, counts := range byBucket {
+		for status, count := range counts {
+			obs = append(obs, converge.Observation{
+				Key:    converge.NewKey(metric, "zone", zoneName, "status", fmt.Sprintf("%d", status)),
+				Value:  count,
+				Bucket: bucket,
+			})
+		}
+		for status := range known {
+			if _, ok := counts[status]; ok {
+				continue
+			}
+			obs = append(obs, converge.Observation{
+				Key:    converge.NewKey(metric, "zone", zoneName, "status", fmt.Sprintf("%d", status)),
+				Value:  0,
+				Bucket: bucket,
+			})
+		}
 	}
 	return obs
 }
