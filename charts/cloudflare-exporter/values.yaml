@@ -18,6 +18,18 @@ fullnameOverride: ""
 podAnnotations: {}
 podLabels: {}
 
+readinessProbe:
+  # Whether to configure a readinessProbe on the container.
+  # Probes GET /ready, which returns 200 once the v2 (converge) metrics
+  # pipeline has stabilized (or immediately, if vm_push_endpoint is unset
+  # and the pipeline was never enabled). Tune the timing below to add your
+  # own settle margin on top of that signal.
+  enabled: true
+  initialDelaySeconds: 0
+  periodSeconds: 10
+  successThreshold: 1
+  failureThreshold: 50
+
 deploymentAnnotations: {}
 
 podSecurityContext: {}
