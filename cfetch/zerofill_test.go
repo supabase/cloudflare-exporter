@@ -32,7 +32,7 @@ func statusLabel(o converge.Observation) string {
 // for a minute is *confirmed* zero by that minute's row still coming back
 // without it - not ambiguous, not something to guess about with a timer.
 func TestFlattenAdaptiveGroupsZeroFillsKnownAbsentStatus(t *testing.T) {
-	f := &Fetcher{knownStatuses: make(map[string]map[int]bool)}
+	f := &Fetcher{knownStatusesV2: make(map[string]map[int]bool)}
 	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	t1 := t0.Add(time.Minute)
 
@@ -73,7 +73,7 @@ func TestFlattenAdaptiveGroupsZeroFillsKnownAbsentStatus(t *testing.T) {
 // each of those minutes' rows is independently authoritative regardless of
 // when the exporter first learned the status exists.
 func TestFlattenAdaptiveGroupsBackfillsWithinSingleMultiMinuteBatch(t *testing.T) {
-	f := &Fetcher{knownStatuses: make(map[string]map[int]bool)}
+	f := &Fetcher{knownStatusesV2: make(map[string]map[int]bool)}
 	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	t1 := t0.Add(time.Minute)
 	t2 := t0.Add(2 * time.Minute)
@@ -105,7 +105,7 @@ func TestFlattenAdaptiveGroupsBackfillsWithinSingleMultiMinuteBatch(t *testing.T
 }
 
 func TestFlattenAdaptiveGroupsNeverSeenStatusNotZeroFilled(t *testing.T) {
-	f := &Fetcher{knownStatuses: make(map[string]map[int]bool)}
+	f := &Fetcher{knownStatusesV2: make(map[string]map[int]bool)}
 	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
 	obs := f.flattenHTTPAdaptiveGroups(adaptiveZoneData{
@@ -116,7 +116,7 @@ func TestFlattenAdaptiveGroupsNeverSeenStatusNotZeroFilled(t *testing.T) {
 }
 
 func TestFlattenAdaptiveGroupsZeroFillIsPerZone(t *testing.T) {
-	f := &Fetcher{knownStatuses: make(map[string]map[int]bool)}
+	f := &Fetcher{knownStatusesV2: make(map[string]map[int]bool)}
 	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	t1 := t0.Add(time.Minute)
 
@@ -134,7 +134,7 @@ func TestFlattenAdaptiveGroupsZeroFillIsPerZone(t *testing.T) {
 }
 
 func TestFlattenAdaptiveGroupsRespectsEnabledFilter(t *testing.T) {
-	f := &Fetcher{knownStatuses: make(map[string]map[int]bool)}
+	f := &Fetcher{knownStatusesV2: make(map[string]map[int]bool)}
 	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
 	obs := f.flattenHTTPAdaptiveGroups(adaptiveZoneData{
