@@ -275,14 +275,9 @@ func zoneStatusSet(registry map[string]map[int]bool, zoneTag string) map[int]boo
 }
 
 // zeroFillMissingStatuses returns a Value: 0 Observation for every status in
-// known that a bucket's counts don't already have an entry for. A minute row
-// that comes back at all lists every status that occurred, so a known status
-// missing from it is a confirmed zero, not a gap - prevents the series from
-// aging out of staleness and causing phantom drop/recover swings.
-//
-// Only pass buckets a fetch actually, successfully returned data for: a
-// chunk that errors outright must never reach here, so a real fetch failure
-// still surfaces as staleness instead of being masked.
+// known that's missing from a bucket - a status absent from a returned
+// minute is a confirmed zero, not a gap. Only pass buckets a fetch actually
+// returned, so a failed fetch still surfaces as staleness, not a fake zero.
 func zeroFillMissingStatuses(metric, zoneName string, known map[int]bool, bucketCounts map[time.Time]map[int]uint64) []converge.Observation {
 	var obs []converge.Observation
 	for bucket, counts := range bucketCounts {
