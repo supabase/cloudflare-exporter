@@ -130,7 +130,12 @@ func convergeConfig() converge.Config {
 	return cfg
 }
 
-func setupConvergerWithFetcher(ctx context.Context, component string, fetcher converge.Fetcher) (func(context.Context) error, error) {
+func setupConvergerWithFetcher(
+	ctx context.Context,
+	component string,
+	fetcher converge.Fetcher,
+	stableNotifier func(),
+) (func(context.Context) error, error) {
 	sink := vmpush.New(vmpush.Config{
 		Endpoint: viper.GetString(argVMPushEndpoint),
 		Username: viper.GetString(argVMPushUser),
@@ -157,21 +162,40 @@ func setupConvergerWithFetcher(ctx context.Context, component string, fetcher co
 	return func(ctx context.Context) error {
 		return converge.Run(
 			converge.ContextWithLogger(ctx, log.WithField("component", component)),
-			cfg, fetcher, sink, nil,
+			cfg, fetcher, sink, stableNotifier,
 		)
 	}, nil
 }
 
-func setupDNSConverger(ctx context.Context, zones []cfzones.Zone, gql *GraphQL) (func(context.Context) error, error) {
+type StableTracker interface {
+	MarkStable(component string)
+}
+
+func setupDNSConverger(
+	ctx context.Context,
+	zones []cfzones.Zone,
+	gql *GraphQL,
+	tracker StableTracker,
+) (func(context.Context) error, error) {
 	fetcher := cfetchdns.New(
 		&gqlAdapter{gql},
 		filterExcludedZones(zones, getExcludedZones()),
 		cfetchdnsEnabledSet(),
 	)
-	return setupConvergerWithFetcher(ctx, "converge-dns", fetcher)
+	return setupConvergerWithFetcher(ctx,
+		"converge-dns",
+		fetcher,
+		func() { tracker.MarkStable("dns") },
+	)
 }
 
-func setupConverger(ctx context.Context, convergeZones []cfzones.Zone, metrics MetricsMap, gql *GraphQL) (func(context.Context) error, error) {
+func setupConverger(
+	ctx context.Context,
+	convergeZones []cfzones.Zone,
+	metrics MetricsMap,
+	gql *GraphQL,
+	tracker StableTracker,
+) (func(context.Context) error, error) {
 	enabled := cfetchEnabledSet(metrics)
 	log.WithField("enabled_count", len(enabled)).WithField("enabled", enabled).Info("cfetch enabled set")
 	log.WithField("config", fmt.Sprintf("%+v", convergeConfig())).Info("converge config")
@@ -180,5 +204,9 @@ func setupConverger(ctx context.Context, convergeZones []cfzones.Zone, metrics M
 		filterExcludedZones(convergeZones, getExcludedZones()),
 		enabled,
 	)
-	return setupConvergerWithFetcher(ctx, "converge", fetcher)
+	return setupConvergerWithFetcher(ctx,
+		"converge",
+		fetcher,
+		func() { tracker.MarkStable("requests") },
+	)
 }
