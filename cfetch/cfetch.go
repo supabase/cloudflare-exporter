@@ -25,14 +25,10 @@ type Fetcher struct {
 	zones   []cfzones.Zone
 	enabled map[string]bool // metric suffixes to emit; nil = emit all
 
-	// knownStatusesV2 and knownStatuses1m each track, per zone, every edge
-	// response status ever seen on their respective path (adaptive/v2 vs
-	// httpRequests1mGroups). Used to zero-fill a status that Cloudflare's
-	// response for a given minute doesn't mention - which means zero
-	// requests with that status that minute, not "unknown". Kept separate
-	// per path since the two datasets are fetched and timed independently.
-	// Fetch is driven by a single ticker loop (see converge.Run), so neither
-	// is ever accessed concurrently.
+	// knownStatusesV2 and knownStatuses1m track, per zone, every edge
+	// response status seen so far on the adaptive/v2 vs 1m-groups path,
+	// for zero-filling (see zeroFillMissingStatuses). Kept separate since
+	// the two datasets are fetched independently.
 	knownStatusesV2 map[string]map[int]bool
 	knownStatuses1m map[string]map[int]bool
 }
@@ -279,22 +275,14 @@ func zoneStatusSet(registry map[string]map[int]bool, zoneTag string) map[int]boo
 }
 
 // zeroFillMissingStatuses returns a Value: 0 Observation for every status in
-// known that a bucket's counts don't already have an entry for.
-//
-// Cloudflare's response is authoritative for what it returns: a minute row
+// known that a bucket's counts don't already have an entry for. A minute row
 // that comes back at all lists every status that occurred, so a known status
-// missing from it had zero requests that minute - that's not ambiguous data,
-// it's a confirmed zero. Without this, Engine.Ingest never sees an
-// Observation for that key, never re-emits its counter, and the series ages
-// out of VictoriaMetrics' staleness window - dropping out of any
-// sum()/rate()/delta() over the zone's total and producing a phantom drop
-// that "recovers" the instant the status code reappears. That's what was
-// driving the CloudflareZone5xxZscoreWarn noise.
+// missing from it is a confirmed zero, not a gap - prevents the series from
+// aging out of staleness and causing phantom drop/recover swings.
 //
-// bucketCounts must only contain buckets a fetch actually, successfully
-// returned data for, so this can't mask a genuine fetch failure: a chunk
-// that errors outright never populates bucketCounts, and its keys fall
-// through to real staleness as before.
+// Only pass buckets a fetch actually, successfully returned data for: a
+// chunk that errors outright must never reach here, so a real fetch failure
+// still surfaces as staleness instead of being masked.
 func zeroFillMissingStatuses(metric, zoneName string, known map[int]bool, bucketCounts map[time.Time]map[int]uint64) []converge.Observation {
 	var obs []converge.Observation
 	for bucket, counts := range bucketCounts {
@@ -313,8 +301,7 @@ func zeroFillMissingStatuses(metric, zoneName string, known map[int]bool, bucket
 }
 
 // flattenHTTPAdaptiveGroups converts one zone's adaptive groups response into
-// Observations, zero-filling any previously-seen status code that this
-// minute's response doesn't mention (see zeroFillMissingStatuses).
+// Observations, zero-filling absent known statuses (see zeroFillMissingStatuses).
 func (f *Fetcher) flattenHTTPAdaptiveGroups(z adaptiveZoneData, zoneName string, enabled map[string]bool) []converge.Observation {
 	const metric = metricnames.ZoneRequestsStatusV2
 	if enabled != nil && !enabled[metric] {
@@ -353,15 +340,9 @@ func (f *Fetcher) flattenHTTPAdaptiveGroups(z adaptiveZoneData, zoneName string,
 // --- Flatten -----------------------------------------------------------------
 
 // flattenHTTP1mGroups converts one zone's 1-minute-group response into
-// Observations. The status-code breakdown is zero-filled the same way as
-// flattenHTTPAdaptiveGroups (see zeroFillMissingStatuses): httpRequests1mGroups
-// only lists a status in responseStatusMap when it had at least one request
-// that minute, so a known status missing from an otherwise-present minute row
-// is a confirmed zero, and without zero-filling it the series goes stale in
-// VictoriaMetrics exactly like the adaptive path did. Every other metric this
-// function emits (totals, bandwidth, content type, country, browser, threat
-// pathing) is unaffected - only the status breakdown has the sparse,
-// zero-omitted shape that causes this.
+// Observations, zero-filling the status breakdown the same way as
+// flattenHTTPAdaptiveGroups (see zeroFillMissingStatuses). Every other
+// metric here is emitted as before.
 func (f *Fetcher) flattenHTTP1mGroups(z zoneData, zoneName string, enabled map[string]bool) []converge.Observation {
 	var obs []converge.Observation
 

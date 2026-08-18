@@ -25,12 +25,8 @@ func statusLabel(o converge.Observation) string {
 	return ""
 }
 
-// TestFlattenAdaptiveGroupsZeroFillsKnownAbsentStatus reproduces the real
-// bug behind the CloudflareZone5xxZscoreWarn noise: Cloudflare's Adaptive
-// Groups API only returns a (zone, status) row for a minute when that status
-// had at least one request. A status code that's seen before but goes quiet
-// for a minute is *confirmed* zero by that minute's row still coming back
-// without it - not ambiguous, not something to guess about with a timer.
+// TestFlattenAdaptiveGroupsZeroFillsKnownAbsentStatus: a known status absent
+// from a returned minute is a confirmed zero, not a gap.
 func TestFlattenAdaptiveGroupsZeroFillsKnownAbsentStatus(t *testing.T) {
 	f := &Fetcher{knownStatusesV2: make(map[string]map[int]bool)}
 	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -66,12 +62,9 @@ func TestFlattenAdaptiveGroupsZeroFillsKnownAbsentStatus(t *testing.T) {
 	assert.Equal(t, uint64(0), values["507"])
 }
 
-// TestFlattenAdaptiveGroupsBackfillsWithinSingleMultiMinuteBatch covers the
-// real call shape: Lookback/BackfillChunk mean every actual Fetch spans many
-// minutes at once, not one. A status seen only in the newest minute of a
-// batch must still zero-fill into the earlier minutes of that same batch -
-// each of those minutes' rows is independently authoritative regardless of
-// when the exporter first learned the status exists.
+// TestFlattenAdaptiveGroupsBackfillsWithinSingleMultiMinuteBatch: a status
+// seen only in the newest minute of a batch must still zero-fill the earlier
+// minutes in that same batch.
 func TestFlattenAdaptiveGroupsBackfillsWithinSingleMultiMinuteBatch(t *testing.T) {
 	f := &Fetcher{knownStatusesV2: make(map[string]map[int]bool)}
 	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)

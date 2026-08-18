@@ -10,8 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// mk1mGroup builds an http1mGroup with only the status breakdown populated -
-// enough to exercise the zero-fill logic without needing every field.
+// mk1mGroup builds an http1mGroup with only the status breakdown populated.
 func mk1mGroup(bucket time.Time, statuses map[int]uint64) http1mGroup {
 	var g http1mGroup
 	g.Dimensions.Datetime = bucket.Format(time.RFC3339)
@@ -25,11 +24,7 @@ func mk1mGroup(bucket time.Time, statuses map[int]uint64) http1mGroup {
 }
 
 // TestFlatten1mGroupsZeroFillsKnownAbsentStatus mirrors the adaptive-groups
-// case: httpRequests1mGroups also only lists a status in responseStatusMap
-// when it had at least one request that minute. Confirmed with real data
-// that this metric has the identical gap pattern (e.g. status 507 on
-// supabase.co: 174 gaps over 3 days, max 51min; 599: max gap 3005min) -
-// currently invisible only because nothing alerts on this metric yet.
+// case: httpRequests1mGroups has the same gap pattern.
 func TestFlatten1mGroupsZeroFillsKnownAbsentStatus(t *testing.T) {
 	f := &Fetcher{knownStatuses1m: make(map[string]map[int]bool)}
 	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -88,9 +83,8 @@ func TestFlatten1mGroupsZeroFillIsPerZone(t *testing.T) {
 	requireStatusCount(t, obs, 1)
 }
 
-// TestFlatten1mGroupsOtherMetricsUnaffected confirms the zero-fill refactor
-// didn't disturb the many other metrics this function emits - only the
-// status breakdown is restructured to support zero-fill.
+// TestFlatten1mGroupsOtherMetricsUnaffected confirms the refactor didn't
+// disturb the function's other metrics.
 func TestFlatten1mGroupsOtherMetricsUnaffected(t *testing.T) {
 	f := &Fetcher{knownStatuses1m: make(map[string]map[int]bool)}
 	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
