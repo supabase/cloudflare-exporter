@@ -39,7 +39,7 @@ func TestFlattenAdaptiveGroupsZeroFillsKnownAbsentStatus(t *testing.T) {
 			mkAdaptiveGroup(t0, 507, 3),
 		},
 	}
-	obs := f.flattenHTTPAdaptiveGroups(first, "supabase.co", nil)
+	obs := f.flattenHTTPAdaptiveGroups(first, "supabase.co")
 	require.Len(t, obs, 2)
 
 	// Minute 1: only status 500 occurs. 507 is absent from this minute's
@@ -50,7 +50,7 @@ func TestFlattenAdaptiveGroupsZeroFillsKnownAbsentStatus(t *testing.T) {
 			mkAdaptiveGroup(t1, 500, 120),
 		},
 	}
-	obs = f.flattenHTTPAdaptiveGroups(second, "supabase.co", nil)
+	obs = f.flattenHTTPAdaptiveGroups(second, "supabase.co")
 	require.Len(t, obs, 2, "expected the real 500 observation plus a zero-fill for the previously-seen 507")
 
 	values := map[string]uint64{}
@@ -79,7 +79,7 @@ func TestFlattenAdaptiveGroupsBackfillsWithinSingleMultiMinuteBatch(t *testing.T
 			mkAdaptiveGroup(t2, 500, 120),
 			mkAdaptiveGroup(t2, 507, 3), // 507 only shows up in the newest minute
 		},
-	}, "supabase.co", nil)
+	}, "supabase.co")
 
 	byBucketStatus := map[time.Time]map[string]uint64{}
 	for _, o := range obs {
@@ -104,7 +104,7 @@ func TestFlattenAdaptiveGroupsNeverSeenStatusNotZeroFilled(t *testing.T) {
 	obs := f.flattenHTTPAdaptiveGroups(adaptiveZoneData{
 		ZoneTag:            "zone1",
 		HTTPAdaptiveGroups: []httpAdaptiveGroup{mkAdaptiveGroup(t0, 500, 10)},
-	}, "supabase.co", nil)
+	}, "supabase.co")
 	require.Len(t, obs, 1, "nothing known yet to zero-fill against")
 }
 
@@ -116,23 +116,26 @@ func TestFlattenAdaptiveGroupsZeroFillIsPerZone(t *testing.T) {
 	f.flattenHTTPAdaptiveGroups(adaptiveZoneData{
 		ZoneTag:            "zone1",
 		HTTPAdaptiveGroups: []httpAdaptiveGroup{mkAdaptiveGroup(t0, 507, 3)},
-	}, "supabase.co", nil)
+	}, "supabase.co")
 
 	// A different zone that has never seen 507 shouldn't get it zero-filled.
 	obs := f.flattenHTTPAdaptiveGroups(adaptiveZoneData{
 		ZoneTag:            "zone2",
 		HTTPAdaptiveGroups: []httpAdaptiveGroup{mkAdaptiveGroup(t1, 500, 10)},
-	}, "snapcloud.dev", nil)
+	}, "snapcloud.dev")
 	require.Len(t, obs, 1, "zero-fill knowledge must not leak across zones")
 }
 
 func TestFlattenAdaptiveGroupsRespectsEnabledFilter(t *testing.T) {
-	f := &Fetcher{knownStatusesV2: make(map[string]map[int]bool)}
+	f := &Fetcher{
+		knownStatusesV2: make(map[string]map[int]bool),
+		enabled:         map[string]bool{"some_other_metric": true},
+	}
 	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
 	obs := f.flattenHTTPAdaptiveGroups(adaptiveZoneData{
 		ZoneTag:            "zone1",
 		HTTPAdaptiveGroups: []httpAdaptiveGroup{mkAdaptiveGroup(t0, 500, 10)},
-	}, "supabase.co", map[string]bool{"some_other_metric": true})
+	}, "supabase.co")
 	assert.Empty(t, obs, "metric not in the enabled set should be filtered out entirely")
 }

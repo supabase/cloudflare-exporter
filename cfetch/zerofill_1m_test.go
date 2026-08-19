@@ -34,14 +34,14 @@ func TestFlatten1mGroupsZeroFillsKnownAbsentStatus(t *testing.T) {
 		ZoneTag:      "zone1",
 		HTTP1mGroups: []http1mGroup{mk1mGroup(t0, map[int]uint64{500: 100, 507: 3})},
 	}
-	obs := f.flattenHTTP1mGroups(first, "supabase.co", nil)
+	obs := f.flattenHTTP1mGroups(first, "supabase.co")
 	requireStatusCount(t, obs, 2)
 
 	second := zoneData{
 		ZoneTag:      "zone1",
 		HTTP1mGroups: []http1mGroup{mk1mGroup(t1, map[int]uint64{500: 120})},
 	}
-	obs = f.flattenHTTP1mGroups(second, "supabase.co", nil)
+	obs = f.flattenHTTP1mGroups(second, "supabase.co")
 
 	values := map[string]uint64{}
 	for _, o := range obs {
@@ -62,7 +62,7 @@ func TestFlatten1mGroupsNeverSeenStatusNotZeroFilled(t *testing.T) {
 	obs := f.flattenHTTP1mGroups(zoneData{
 		ZoneTag:      "zone1",
 		HTTP1mGroups: []http1mGroup{mk1mGroup(t0, map[int]uint64{500: 10})},
-	}, "supabase.co", nil)
+	}, "supabase.co")
 	requireStatusCount(t, obs, 1)
 }
 
@@ -74,12 +74,12 @@ func TestFlatten1mGroupsZeroFillIsPerZone(t *testing.T) {
 	f.flattenHTTP1mGroups(zoneData{
 		ZoneTag:      "zone1",
 		HTTP1mGroups: []http1mGroup{mk1mGroup(t0, map[int]uint64{507: 3})},
-	}, "supabase.co", nil)
+	}, "supabase.co")
 
 	obs := f.flattenHTTP1mGroups(zoneData{
 		ZoneTag:      "zone2",
 		HTTP1mGroups: []http1mGroup{mk1mGroup(t1, map[int]uint64{500: 10})},
-	}, "snapcloud.dev", nil)
+	}, "snapcloud.dev")
 	requireStatusCount(t, obs, 1)
 }
 
@@ -100,7 +100,7 @@ func TestFlatten1mGroupsOtherMetricsUnaffected(t *testing.T) {
 		EdgeResponseContentType string `json:"edgeResponseContentTypeName"`
 	}{Requests: 5, Bytes: 100, EdgeResponseContentType: "text/html"})
 
-	obs := f.flattenHTTP1mGroups(zoneData{ZoneTag: "zone1", HTTP1mGroups: []http1mGroup{g}}, "supabase.co", nil)
+	obs := f.flattenHTTP1mGroups(zoneData{ZoneTag: "zone1", HTTP1mGroups: []http1mGroup{g}}, "supabase.co")
 
 	byMetric := map[string]uint64{}
 	for _, o := range obs {

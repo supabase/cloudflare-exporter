@@ -25,10 +25,8 @@ type Fetcher struct {
 	zones   []cfzones.Zone
 	enabled map[string]bool // metric suffixes to emit; nil = emit all
 
-	// knownStatusesV2 and knownStatuses1m track, per zone, every edge
-	// response status seen so far on the adaptive/v2 vs 1m-groups path,
-	// for zero-filling (see zeroFillMissingStatuses). Kept separate since
-	// the two datasets are fetched independently.
+	// Per-zone known statuses for zero-filling (see flattenStatusCounts).
+	// Unlocked: Fetch only ever runs on one goroutine (converge/runner.go).
 	knownStatusesV2 map[string]map[int]bool
 	knownStatuses1m map[string]map[int]bool
 }
@@ -55,7 +53,7 @@ func (f *Fetcher) Fetch(ctx context.Context, start, end time.Time) ([]converge.O
 		}
 		var obs []converge.Observation
 		for _, z := range resp.Viewer.Zones {
-			obs = append(obs, f.flattenHTTP1mGroups(z, cfgql.FindZoneName(chunk, z.ZoneTag), f.enabled)...)
+			obs = append(obs, f.flattenHTTP1mGroups(z, cfgql.FindZoneName(chunk, z.ZoneTag))...)
 		}
 		return obs, nil
 	})
@@ -70,7 +68,7 @@ func (f *Fetcher) Fetch(ctx context.Context, start, end time.Time) ([]converge.O
 		}
 		var obs []converge.Observation
 		for _, z := range resp.Viewer.Zones {
-			obs = append(obs, f.flattenHTTPAdaptiveGroups(z, cfgql.FindZoneName(chunk, z.ZoneTag), f.enabled)...)
+			obs = append(obs, f.flattenHTTPAdaptiveGroups(z, cfgql.FindZoneName(chunk, z.ZoneTag))...)
 		}
 		return obs, nil
 	})
@@ -274,20 +272,15 @@ func zoneStatusSet(registry map[string]map[int]bool, zoneTag string) map[int]boo
 	return known
 }
 
-// zeroFillMissingStatuses returns a Value: 0 Observation for every status in
-// known that's missing from a bucket - a status absent from a returned
-// minute is a confirmed zero, not a gap. Only pass buckets a fetch actually
-// returned, so a failed fetch still surfaces as staleness, not a fake zero.
-func zeroFillMissingStatuses(metric, zoneName string, known map[int]bool, bucketCounts map[time.Time]map[int]uint64) []converge.Observation {
+// flattenStatusCounts emits one Observation per (bucket, status) in known -
+// the real count, or zero if that status was absent (a confirmed zero, not a gap).
+func flattenStatusCounts(metric, zoneName string, known map[int]bool, bucketCounts map[time.Time]map[int]uint64) []converge.Observation {
 	var obs []converge.Observation
 	for bucket, counts := range bucketCounts {
 		for status := range known {
-			if _, ok := counts[status]; ok {
-				continue
-			}
 			obs = append(obs, converge.Observation{
 				Key:    converge.NewKey(metric, "zone", zoneName, "status", fmt.Sprintf("%d", status)),
-				Value:  0,
+				Value:  counts[status], // zero value if status absent from counts == confirmed zero
 				Bucket: bucket,
 			})
 		}
@@ -296,10 +289,10 @@ func zeroFillMissingStatuses(metric, zoneName string, known map[int]bool, bucket
 }
 
 // flattenHTTPAdaptiveGroups converts one zone's adaptive groups response into
-// Observations, zero-filling absent known statuses (see zeroFillMissingStatuses).
-func (f *Fetcher) flattenHTTPAdaptiveGroups(z adaptiveZoneData, zoneName string, enabled map[string]bool) []converge.Observation {
+// Observations, zero-filling absent known statuses (see flattenStatusCounts).
+func (f *Fetcher) flattenHTTPAdaptiveGroups(z adaptiveZoneData, zoneName string) []converge.Observation {
 	const metric = metricnames.ZoneRequestsStatusV2
-	if enabled != nil && !enabled[metric] {
+	if f.enabled != nil && !f.enabled[metric] {
 		return nil
 	}
 
@@ -318,31 +311,22 @@ func (f *Fetcher) flattenHTTPAdaptiveGroups(z adaptiveZoneData, zoneName string,
 		known[g.Dimensions.EdgeResponseStatus] = true
 	}
 
-	var obs []converge.Observation
-	for bucket, counts := range byBucket {
-		for status, count := range counts {
-			obs = append(obs, converge.Observation{
-				Key:    converge.NewKey(metric, "zone", zoneName, "status", fmt.Sprintf("%d", status)),
-				Value:  count,
-				Bucket: bucket,
-			})
-		}
-	}
-	obs = append(obs, zeroFillMissingStatuses(metric, zoneName, known, byBucket)...)
-	return obs
+	return flattenStatusCounts(metric, zoneName, known, byBucket)
 }
 
 // --- Flatten -----------------------------------------------------------------
 
 // flattenHTTP1mGroups converts one zone's 1-minute-group response into
 // Observations, zero-filling the status breakdown the same way as
-// flattenHTTPAdaptiveGroups (see zeroFillMissingStatuses). Every other
+// flattenHTTPAdaptiveGroups (see flattenStatusCounts). Every other
 // metric here is emitted as before.
-func (f *Fetcher) flattenHTTP1mGroups(z zoneData, zoneName string, enabled map[string]bool) []converge.Observation {
+func (f *Fetcher) flattenHTTP1mGroups(z zoneData, zoneName string) []converge.Observation {
 	var obs []converge.Observation
 
 	known := zoneStatusSet(f.knownStatuses1m, z.ZoneTag)
 	statusByBucket := make(map[time.Time]map[int]uint64)
+	const statusMetric = metricnames.ZoneRequestsStatus
+	statusEnabled := f.enabled == nil || f.enabled[statusMetric]
 
 	for _, g := range z.HTTP1mGroups {
 		bucket, err := time.Parse(time.RFC3339, g.Dimensions.Datetime)
@@ -351,7 +335,7 @@ func (f *Fetcher) flattenHTTP1mGroups(z zoneData, zoneName string, enabled map[s
 		}
 
 		o := func(metric string, value uint64, extraLabels ...string) {
-			if enabled != nil && !enabled[metric] {
+			if f.enabled != nil && !f.enabled[metric] {
 				return
 			}
 			labelPairs := append([]string{"zone", zoneName}, extraLabels...)
@@ -386,14 +370,15 @@ func (f *Fetcher) flattenHTTP1mGroups(z zoneData, zoneName string, enabled map[s
 			o(metricnames.ZoneThreatsCountry, c.Threats, "country", c.ClientCountryName)
 		}
 
-		// By status code - collected here instead of emitted immediately so
-		// known-but-absent statuses can be zero-filled below.
-		if statusByBucket[bucket] == nil {
-			statusByBucket[bucket] = make(map[int]uint64)
-		}
-		for _, s := range g.Sum.ResponseStatus {
-			statusByBucket[bucket][s.EdgeResponseStatus] = s.Requests
-			known[s.EdgeResponseStatus] = true
+		// By status code - collected for zero-fill below, skipped if disabled.
+		if statusEnabled {
+			if statusByBucket[bucket] == nil {
+				statusByBucket[bucket] = make(map[int]uint64)
+			}
+			for _, s := range g.Sum.ResponseStatus {
+				statusByBucket[bucket][s.EdgeResponseStatus] = s.Requests
+				known[s.EdgeResponseStatus] = true
+			}
 		}
 
 		// By browser
@@ -407,18 +392,8 @@ func (f *Fetcher) flattenHTTP1mGroups(z zoneData, zoneName string, enabled map[s
 		}
 	}
 
-	const statusMetric = metricnames.ZoneRequestsStatus
-	if enabled == nil || enabled[statusMetric] {
-		for bucket, counts := range statusByBucket {
-			for status, count := range counts {
-				obs = append(obs, converge.Observation{
-					Key:    converge.NewKey(statusMetric, "zone", zoneName, "status", fmt.Sprintf("%d", status)),
-					Value:  count,
-					Bucket: bucket,
-				})
-			}
-		}
-		obs = append(obs, zeroFillMissingStatuses(statusMetric, zoneName, known, statusByBucket)...)
+	if statusEnabled {
+		obs = append(obs, flattenStatusCounts(statusMetric, zoneName, known, statusByBucket)...)
 	}
 
 	return obs
