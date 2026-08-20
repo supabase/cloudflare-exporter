@@ -85,12 +85,29 @@ func (s *Sink) Ping(ctx context.Context) error {
 	return nil
 }
 
-// Push sends samples to VictoriaMetrics using Prometheus remote write.
-func (s *Sink) Push(ctx context.Context, samples []converge.Sample) error {
-	if len(samples) == 0 {
-		return nil
-	}
+// maxBatchSeries caps how many series go into one remote-write request.
+// A post-backfill snapshot can carry hundreds of thousands of series; VM
+// rejects any single request over -maxInsertRequestSize (32MB unpacked).
+// At ~100 bytes/series observed in prod, 20k series is ~2MB unpacked -
+// well under the cap even as label cardinality varies.
+const maxBatchSeries = 20_000
 
+// Push sends samples to VictoriaMetrics using Prometheus remote write,
+// splitting into batches of maxBatchSeries to stay under VM's request
+// size limit.
+func (s *Sink) Push(ctx context.Context, samples []converge.Sample) error {
+	for len(samples) > 0 {
+		n := min(len(samples), maxBatchSeries)
+		if err := s.pushBatch(ctx, samples[:n]); err != nil {
+			return err
+		}
+		samples = samples[n:]
+	}
+	return nil
+}
+
+// pushBatch sends a single remote-write request for the given samples.
+func (s *Sink) pushBatch(ctx context.Context, samples []converge.Sample) error {
 	ts := make([]prompb.TimeSeries, 0, len(samples))
 	for _, sample := range samples {
 		pbLabels := make([]prompb.Label, 0, len(sample.Key.Labels)+1)
