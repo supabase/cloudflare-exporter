@@ -38,12 +38,11 @@ func TestKeyStringNoLabels(t *testing.T) {
 	assert.Nil(t, k.Labels)
 }
 
-// TestPushSplitsIntoBatchesUnderCap reproduces the prod incident: a single
-// post-backfill snapshot with more series than fit in one VM request. Push
-// must split it into multiple requests, each within maxBatchSeries.
+// TestPushSplitsIntoBatchesUnderCap asserts Push never sends more than
+// maxBatchSeries series in one request.
 func TestPushSplitsIntoBatchesUnderCap(t *testing.T) {
 	var requestCount atomic.Int32
-	var maxSeriesSeen atomic.Int32
+	var maxSeriesSeen atomic.Int64
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requestCount.Add(1)
@@ -54,7 +53,7 @@ func TestPushSplitsIntoBatchesUnderCap(t *testing.T) {
 
 		var wr prompb.WriteRequest
 		require.NoError(t, wr.Unmarshal(decompressed))
-		if n := int32(len(wr.Timeseries)); n > maxSeriesSeen.Load() {
+		if n := int64(len(wr.Timeseries)); n > maxSeriesSeen.Load() {
 			maxSeriesSeen.Store(n)
 		}
 		require.LessOrEqual(t, len(wr.Timeseries), maxBatchSeries,
@@ -65,7 +64,6 @@ func TestPushSplitsIntoBatchesUnderCap(t *testing.T) {
 
 	sink := New(Config{Endpoint: srv.URL})
 
-	// More than 2 batches worth of series, so we exercise the loop.
 	total := maxBatchSeries*2 + 1
 	samples := make([]converge.Sample, total)
 	for i := range samples {
@@ -79,5 +77,5 @@ func TestPushSplitsIntoBatchesUnderCap(t *testing.T) {
 	err := sink.Push(context.Background(), samples)
 	require.NoError(t, err)
 	assert.Equal(t, int32(3), requestCount.Load(), "expected 3 batches: 2 full + 1 remainder")
-	assert.LessOrEqual(t, int(maxSeriesSeen.Load()), maxBatchSeries)
+	assert.LessOrEqual(t, maxSeriesSeen.Load(), int64(maxBatchSeries))
 }

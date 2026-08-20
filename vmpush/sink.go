@@ -85,16 +85,11 @@ func (s *Sink) Ping(ctx context.Context) error {
 	return nil
 }
 
-// maxBatchSeries caps how many series go into one remote-write request.
-// A post-backfill snapshot can carry hundreds of thousands of series; VM
-// rejects any single request over -maxInsertRequestSize (32MB unpacked).
-// At ~100 bytes/series observed in prod, 20k series is ~2MB unpacked -
-// well under the cap even as label cardinality varies.
+// maxBatchSeries keeps one request well under VM's 32MB -maxInsertRequestSize
+// (~100 bytes/series observed in prod, so ~2MB per batch).
 const maxBatchSeries = 20_000
 
-// Push sends samples to VictoriaMetrics using Prometheus remote write,
-// splitting into batches of maxBatchSeries to stay under VM's request
-// size limit.
+// Push sends samples to VictoriaMetrics, batched to stay under VM's request size limit.
 func (s *Sink) Push(ctx context.Context, samples []converge.Sample) error {
 	for len(samples) > 0 {
 		n := min(len(samples), maxBatchSeries)
