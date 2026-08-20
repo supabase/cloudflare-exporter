@@ -1024,12 +1024,8 @@ func filterNonFreePlanZones(zones []cfzones.Zone) (filteredZones []cfzones.Zone)
 	var zoneIDs []string
 
 	for _, z := range zones {
-		extraFields := map[string]any{}
-		if err := json.Unmarshal([]byte(z.JSON.ExtraFields["plan"].Raw()), &extraFields); err != nil {
-			recordError("filterNonFreePlanZones", fmt.Errorf("error unmarshaling zone plan for zone %q: %w", z.ID, err))
-			continue
-		}
-		if extraFields["id"] == freePlanID {
+		//nolint:staticcheck // Plan is deprecated only for writes; it's still the field the zones List/Get response populates for reads.
+		if z.Plan.ID == freePlanID {
 			continue
 		}
 		if !slices.Contains(zoneIDs, z.ID) {

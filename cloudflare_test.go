@@ -8,6 +8,7 @@ import (
 
 	cf "github.com/cloudflare/cloudflare-go/v7"
 	cfoption "github.com/cloudflare/cloudflare-go/v7/option"
+	cfzones "github.com/cloudflare/cloudflare-go/v7/zones"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -56,4 +57,18 @@ func TestFetchCustomHostnamesQuota(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "insufficient permissions")
 	})
+}
+
+func TestFilterNonFreePlanZones(t *testing.T) {
+	zones := []cfzones.Zone{
+		//nolint:staticcheck // constructing the same deprecated-for-writes field the real API populates on reads
+		{ID: "free-zone", Plan: cfzones.ZonePlan{ID: freePlanID}},
+		//nolint:staticcheck // constructing the same deprecated-for-writes field the real API populates on reads
+		{ID: "paid-zone", Plan: cfzones.ZonePlan{ID: "some-paid-plan-id"}},
+	}
+
+	got := filterNonFreePlanZones(zones)
+
+	require.Len(t, got, 1, "free-plan zones should be filtered out, paid ones kept")
+	assert.Equal(t, "paid-zone", got[0].ID)
 }
