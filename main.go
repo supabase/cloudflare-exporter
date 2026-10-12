@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"maps"
 	"net/http"
 	_ "net/http/pprof" // #nosec G108 - pprof is controlled via enable_pprof flag
@@ -121,16 +122,29 @@ func MetricsCtxFromContext(ctx context.Context) *metricsCtx {
 	return ctx.Value(metricsCtxKey).(*metricsCtx)
 }
 
+// goSafe runs fn on wg and records a panic as an error instead of crashing the
+// exporter, which would also stop the converge push path.
+func goSafe(wg *sync.WaitGroup, name string, fn func()) {
+	wg.Go(func() {
+		defer func() {
+			if r := recover(); r != nil {
+				recordError("panic_"+name, fmt.Errorf("panic in %s: %v\n%s", name, r, debug.Stack()))
+			}
+		}()
+		fn()
+	})
+}
+
 func fetchMetrics(ctx context.Context, accounts []cfaccounts.Account, zones []cfzones.Zone) {
 	var wg sync.WaitGroup
 
 	for _, a := range accounts {
-		wg.Go(func() { fetchWorkerDeployments(ctx, a) })
-		wg.Go(func() { fetchWorkerAnalytics(ctx, a) })
-		wg.Go(func() { fetchLogpushAnalyticsForAccount(ctx, a) })
-		wg.Go(func() { fetchR2StorageForAccount(ctx, a) })
-		wg.Go(func() { fetchLoadblancerPoolsHealth(ctx, a) })
-		wg.Go(func() { fetchAccountDNSRecordQuota(ctx, a) })
+		goSafe(&wg, "fetchWorkerDeployments", func() { fetchWorkerDeployments(ctx, a) })
+		goSafe(&wg, "fetchWorkerAnalytics", func() { fetchWorkerAnalytics(ctx, a) })
+		goSafe(&wg, "fetchLogpushAnalyticsForAccount", func() { fetchLogpushAnalyticsForAccount(ctx, a) })
+		goSafe(&wg, "fetchR2StorageForAccount", func() { fetchR2StorageForAccount(ctx, a) })
+		goSafe(&wg, "fetchLoadblancerPoolsHealth", func() { fetchLoadblancerPoolsHealth(ctx, a) })
+		goSafe(&wg, "fetchAccountDNSRecordQuota", func() { fetchAccountDNSRecordQuota(ctx, a) })
 	}
 
 	// if target zones weren't provided, pull zones each loop
@@ -143,13 +157,13 @@ func fetchMetrics(ctx context.Context, accounts []cfaccounts.Account, zones []cf
 	}
 
 	for zonesChunk := range slices.Chunk(zones, cfgraphqlreqlimit) {
-		wg.Go(func() { fetchZoneAnalytics(ctx, zonesChunk) })
-		wg.Go(func() { fetchZoneWorkerAnalytics(ctx, zonesChunk) })
-		wg.Go(func() { fetchZoneColocationAnalytics(ctx, zonesChunk) })
-		wg.Go(func() { fetchLoadBalancerAnalytics(ctx, zonesChunk) })
-		wg.Go(func() { fetchLogpushAnalyticsForZone(ctx, zonesChunk) })
-		wg.Go(func() { fetchCustomHostnamesMetrics(ctx, zonesChunk) })
-		wg.Go(func() { fetchZoneDNSRecordQuota(ctx, zonesChunk) })
+		goSafe(&wg, "fetchZoneAnalytics", func() { fetchZoneAnalytics(ctx, zonesChunk) })
+		goSafe(&wg, "fetchZoneWorkerAnalytics", func() { fetchZoneWorkerAnalytics(ctx, zonesChunk) })
+		goSafe(&wg, "fetchZoneColocationAnalytics", func() { fetchZoneColocationAnalytics(ctx, zonesChunk) })
+		goSafe(&wg, "fetchLoadBalancerAnalytics", func() { fetchLoadBalancerAnalytics(ctx, zonesChunk) })
+		goSafe(&wg, "fetchLogpushAnalyticsForZone", func() { fetchLogpushAnalyticsForZone(ctx, zonesChunk) })
+		goSafe(&wg, "fetchCustomHostnamesMetrics", func() { fetchCustomHostnamesMetrics(ctx, zonesChunk) })
+		goSafe(&wg, "fetchZoneDNSRecordQuota", func() { fetchZoneDNSRecordQuota(ctx, zonesChunk) })
 	}
 
 	wg.Wait()

@@ -447,6 +447,10 @@ func getWorkerDeployments(ctx context.Context, accountID string) ([]DeployedVers
 		if err != nil {
 			return nil, fmt.Errorf("failed to get deployment for %q: %w", script.ID, err)
 		}
+		// a script can have no deployment yet (just created, or deleted mid-listing)
+		if rep == nil || len(rep.Deployments) == 0 {
+			continue
+		}
 		for _, vs := range rep.Deployments[0].Versions {
 			versions = append(versions, DeployedVersion{
 				ID:         script.ID,
